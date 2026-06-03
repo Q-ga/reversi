@@ -1,5 +1,5 @@
 // オフライン対応のサービスワーカー（アプリシェルをキャッシュ）。
-const CACHE = "reversi-v1";
+const CACHE = "reversi-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -20,6 +20,19 @@ const ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-180.png",
+  "./src/bgm.js",
+  "./src/render3d.js",
+  "./vendor/three.module.js",
+  "./textures/board.png",
+  "./audio/place.wav",
+  "./audio/flip.wav",
+  "./audio/bell.wav",
+  "./audio/reversal.wav",
+  "./audio/fanfare_win.wav",
+  "./audio/fanfare_lose.wav",
+  "./audio/bgm_normal.wav",
+  "./audio/bgm_close.wav",
+  "./audio/bgm_oneside.wav",
 ];
 
 self.addEventListener("install", (e) => {

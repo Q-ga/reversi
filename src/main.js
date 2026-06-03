@@ -1,7 +1,8 @@
 // アプリ全体の配線：画面遷移／対局進行／CPU／音／演出／記録／戦績。
 import { BLACK, WHITE, count } from "./rules.js";
 import { newGame, play, undo, gameResult } from "./game.js";
-import { chooseCpuMove, assessForm } from "./evaluate.js";
+import { chooseCpuMove } from "./evaluate.js";
+import { bgmState } from "./bgm.js";
 import { createBoardView } from "./render3d.js";
 import { detectEvents } from "./events.js";
 import { kifuFromMoves } from "./notation.js";
@@ -124,14 +125,16 @@ function startMatch(cfg) {
   busy = false;
   match = { ...cfg, startedAt: Date.now(), moves: [] };
   state = newGame(BLACK);
-  if (!view) view = createBoardView($("board3d"), onCell);
+  if (!view) {
+    view = createBoardView($("board3d"), onCell);
+    if (location.search.includes("slow")) window.__view = view; // デバッグ用
+  }
   $("snd-bgm").checked = audio.isBgmEnabled();
   $("snd-sfx").checked = audio.isSfxEnabled();
   showScreen("game");
   view.sync(state, match.hints);
   renderPanels();
-  audio.startBgm();
-  audio.setBand(assessForm(state.board, match.mainColor).band);
+  audio.startBgm(bgmState(state.board));
   updateMessage();
   maybeCpuTurn();
 }
@@ -206,12 +209,12 @@ async function doMove(r, c) {
   // パスが起きていたら棋譜にも記録
   if (state.passed) match.moves.push({ pass: true });
 
-  // 形勢→BGM
-  const form = assessForm(state.board, match.mainColor);
-  audio.setBand(form.band);
+  // 局面に応じてBGM切替（2段階：通常/終盤接戦/終盤一方的）
+  audio.setBgm(bgmState(state.board));
   // スポット演出はR4でシーン内に実装。判定だけ算出しておく。
   const tags = detectEvents(prev, state, { r, c }, flippedCount, match.mainColor);
-  if (view.applyEffects) view.applyEffects(tags, { r, c, flippedCount, color, mainColor: match.mainColor });
+  for (const tag of tags) audio.playEvent(tag); // 演出音（ビジュアルはR4でview側に）
+  if (view.applyEffects) view.applyEffects(tags, { r, c, flippedCount, color });
 
   view.renderHints(state, match.hints);
   renderPanels();
@@ -305,11 +308,11 @@ $("btn-undo").addEventListener("click", async () => {
   view.sync(state, match.hints);
   renderPanels();
   updateMessage();
-  audio.setBand(assessForm(state.board, match.mainColor).band);
+  audio.setBgm(bgmState(state.board));
 });
 $("snd-bgm").addEventListener("change", (e) => {
   audio.setBgmEnabled(e.target.checked);
-  if (e.target.checked && state && !state.over) audio.startBgm(); else audio.stopBgm();
+  if (e.target.checked && state && !state.over) audio.startBgm(bgmState(state.board)); else audio.stopBgm();
 });
 $("snd-sfx").addEventListener("change", (e) => audio.setSfxEnabled(e.target.checked));
 

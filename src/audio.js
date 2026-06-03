@@ -1,5 +1,18 @@
-// Web Audio による音の合成。効果音＋8bitチップチューンBGM（形勢3段階）。
-// すべてコード生成（音源ファイル無し）。iOS制約のため init() は最初のタップ後に呼ぶ。
+// 音の再生（DSP生成WAVファイルを再生）。効果音＋2段階BGM（通常/終盤接戦/終盤一方的）。
+// iOS制約：init() は最初のユーザー操作後に呼ぶ。BGMと効果音は別々にミュート可。
+const SFX_FILES = {
+  place: "./audio/place.wav",
+  flip: "./audio/flip.wav",
+  bell: "./audio/bell.wav",
+  reversal: "./audio/reversal.wav",
+  fanfare_win: "./audio/fanfare_win.wav",
+  fanfare_lose: "./audio/fanfare_lose.wav",
+};
+const BGM_FILES = {
+  normal: "./audio/bgm_normal.wav",
+  endgame_close: "./audio/bgm_close.wav",
+  endgame_oneside: "./audio/bgm_oneside.wav",
+};
 
 let ctx = null;
 let sfxGain = null;
@@ -7,124 +20,112 @@ let bgmGain = null;
 let sfxOn = true;
 let bgmOn = true;
 
-let bgmTimer = null;
-let bgmStep = 0;
-let bgmBand = "even";
+const rawBuffers = {}; // name -> ArrayBuffer（fetch済み・decode前）
+const buffers = {};    // name -> AudioBuffer（decode済み）
+const bgmTracks = {};  // state -> { src, gain }
+let currentBgm = null;
+let bgmRunning = false;
 
-// 8bit風の単音（矩形波）
-function blip(freq, dur, when, gainNode, type = "square", vol = 0.2) {
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = type;
-  osc.frequency.value = freq;
-  g.gain.setValueAtTime(0, when);
-  g.gain.linearRampToValueAtTime(vol, when + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-  osc.connect(g);
-  g.connect(gainNode);
-  osc.start(when);
-  osc.stop(when + dur + 0.02);
+// モジュール読込時にファイルを先読み（decodeはinit後）
+for (const [k, url] of Object.entries({ ...SFX_FILES, ...BGM_FILES })) {
+  fetch(url).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
 }
 
 export function init() {
-  if (ctx) {
-    if (ctx.state === "suspended") ctx.resume();
-    return;
-  }
+  if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext;
   ctx = new AC();
-  sfxGain = ctx.createGain();
-  bgmGain = ctx.createGain();
-  sfxGain.gain.value = 0.9;
-  bgmGain.gain.value = bgmOn ? 0.25 : 0;
-  sfxGain.connect(ctx.destination);
-  bgmGain.connect(ctx.destination);
+  sfxGain = ctx.createGain(); sfxGain.gain.value = 0.9; sfxGain.connect(ctx.destination);
+  bgmGain = ctx.createGain(); bgmGain.gain.value = bgmOn ? 0.5 : 0; bgmGain.connect(ctx.destination);
+  // 先読み済みをdecode（slice：decodeはArrayBufferを消費するため複製）
+  for (const [k, ab] of Object.entries(rawBuffers)) {
+    ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[k] = buf; }).catch(() => {});
+  }
 }
 
-export function setSfxEnabled(on) {
-  sfxOn = on;
-}
+export function setSfxEnabled(on) { sfxOn = on; }
 export function setBgmEnabled(on) {
   bgmOn = on;
-  if (bgmGain) bgmGain.gain.value = on ? 0.25 : 0;
+  if (bgmGain && ctx) bgmGain.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.05);
 }
 export function isSfxEnabled() { return sfxOn; }
 export function isBgmEnabled() { return bgmOn; }
 
-// --- 効果音 ---
-export function playPlace() {
-  if (!ctx || !sfxOn) return;
-  blip(180, 0.12, ctx.currentTime, sfxGain, "triangle", 0.35); // コトッ
+function playBuffer(name, { rate = 1, gain = 1 } = {}) {
+  if (!ctx || !sfxOn || !buffers[name]) return;
+  const src = ctx.createBufferSource();
+  src.buffer = buffers[name];
+  src.playbackRate.value = rate;
+  const g = ctx.createGain(); g.gain.value = gain;
+  src.connect(g); g.connect(sfxGain);
+  src.start();
 }
 
-// 連鎖めくり用：index が進むほど音程が上がる（滝/上昇コンボ）
-export function playFlip(index = 0) {
-  if (!ctx || !sfxOn) return;
-  const freq = 440 + index * 45;
-  blip(freq, 0.07, ctx.currentTime, sfxGain, "square", 0.18);
-}
+// ---- 効果音 ----
+export function playPlace() { playBuffer("place", { gain: 0.9 }); }
+// 連鎖めくり：indexが進むほど音程上昇（滝）
+export function playFlip(i = 0) { playBuffer("flip", { rate: 1 + Math.min(i, 14) * 0.05, gain: 0.7 }); }
 
-function arpUp(base, steps, gap, type = "square") {
-  const t0 = ctx.currentTime;
-  steps.forEach((semi, i) => blip(base * Math.pow(2, semi / 12), 0.12, t0 + i * gap, sfxGain, type, 0.25));
-}
-
-export function playEventSound(tag) {
-  if (!ctx || !sfxOn) return;
-  switch (tag) {
-    case "corner": arpUp(523, [0, 4, 7, 12], 0.05); break;            // キラッ（上昇）
-    case "reversal": arpUp(330, [0, 5, 9, 14, 19], 0.04, "sawtooth"); break;
-    case "bigFlip": blip(120, 0.3, ctx.currentTime, sfxGain, "sawtooth", 0.25); break;
-    case "gameover-win": arpUp(523, [0, 4, 7, 12, 16, 19], 0.09); break; // ファンファーレ
-    case "gameover-lose": arpUp(440, [0, -3, -7, -12], 0.12, "triangle"); break;
-    case "gameover-draw": arpUp(440, [0, 0], 0.15, "triangle"); break;
-    case "shutout": arpUp(659, [0, 7, 12, 19, 24], 0.07); break;
-    case "pass": blip(150, 0.15, ctx.currentTime, sfxGain, "triangle", 0.2); break;
-    case "lastCell": blip(880, 0.08, ctx.currentTime, sfxGain, "square", 0.2); break;
-    default: break;
-  }
-}
-
-// --- BGM（形勢3段階のチップチューン） ---
-// 各バンドで音階・テンポ・波形を変えてトーンを作り分ける。
-const PATTERNS = {
-  win:  { notes: [0, 4, 7, 12, 7, 4, 7, 9], root: 392, tempo: 150, type: "square" },   // 明るい長調・軽快
-  even: { notes: [0, 3, 7, 3, 5, 3, 0, -2], root: 330, tempo: 110, type: "triangle" }, // 淡々・緊張
-  lose: { notes: [0, -2, -5, -2, -7, -5, -2, 0], root: 294, tempo: 95, type: "sawtooth" }, // 不穏・低め
+const EVENT_SOUND = {
+  corner: ["bell", 0.9],
+  reversal: ["reversal", 0.9],
+  "gameover-win": ["fanfare_win", 1.0],
+  "gameover-lose": ["fanfare_lose", 1.0],
+  shutout: ["fanfare_win", 1.0],
 };
-
-function bgmTick() {
-  if (!ctx) return;
-  const p = PATTERNS[bgmBand];
-  const semi = p.notes[bgmStep % p.notes.length];
-  const freq = p.root * Math.pow(2, semi / 12);
-  if (bgmOn) blip(freq, 0.18, ctx.currentTime, bgmGain, p.type, 0.5);
-  // ベース（1拍おき）
-  if (bgmStep % 2 === 0 && bgmOn) {
-    blip(p.root / 2, 0.22, ctx.currentTime, bgmGain, "triangle", 0.4);
-  }
-  bgmStep++;
-  bgmTimer = setTimeout(bgmTick, 60000 / PATTERNS[bgmBand].tempo / 2);
+export function playEvent(tag) {
+  const e = EVENT_SOUND[tag];
+  if (e) playBuffer(e[0], { gain: e[1] });
 }
 
-export function startBgm() {
-  if (!ctx || bgmTimer) return;
-  bgmStep = 0;
-  bgmTick();
+// ---- BGM（2段階・クロスフェード） ----
+function startTrack(state) {
+  if (!ctx || !buffers[state]) return null;
+  const src = ctx.createBufferSource();
+  src.buffer = buffers[state];
+  src.loop = true;
+  const g = ctx.createGain(); g.gain.value = 0;
+  src.connect(g); g.connect(bgmGain);
+  src.start();
+  return { src, gain: g };
+}
+
+export function startBgm(state = "normal") {
+  if (!ctx) return;
+  bgmRunning = true;
+  setBgm(state, true);
+}
+
+// 局面に応じてBGMを切り替える（normal / endgame_close / endgame_oneside）
+export function setBgm(state, force = false) {
+  if (!ctx || !bgmRunning) return;
+  if (!force && state === currentBgm) return;
+  // decodeがまだなら少し待って再試行
+  if (!buffers[state]) { setTimeout(() => setBgm(state, force), 200); return; }
+  const now = ctx.currentTime;
+  // 既存トラックをフェードアウト＆停止予約
+  for (const [name, tr] of Object.entries(bgmTracks)) {
+    if (name !== state) {
+      tr.gain.gain.cancelScheduledValues(now);
+      tr.gain.gain.setTargetAtTime(0, now, 0.4);
+      try { tr.src.stop(now + 1.5); } catch {}
+      delete bgmTracks[name];
+    }
+  }
+  if (!bgmTracks[state]) bgmTracks[state] = startTrack(state);
+  const tr = bgmTracks[state];
+  if (tr) { tr.gain.gain.cancelScheduledValues(now); tr.gain.gain.setTargetAtTime(0.9, now, 0.5); }
+  currentBgm = state;
 }
 
 export function stopBgm() {
-  if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; }
-}
-
-// 形勢バンドの切替（クロスフェード風にgainを軽く揺らす）
-export function setBand(band) {
-  if (band === bgmBand) return;
-  bgmBand = band;
-  if (!ctx || !bgmOn) return;
+  bgmRunning = false;
+  if (!ctx) return;
   const now = ctx.currentTime;
-  bgmGain.gain.cancelScheduledValues(now);
-  bgmGain.gain.setValueAtTime(bgmGain.gain.value, now);
-  bgmGain.gain.linearRampToValueAtTime(0.08, now + 0.15);
-  bgmGain.gain.linearRampToValueAtTime(0.25, now + 0.5);
+  for (const [name, tr] of Object.entries(bgmTracks)) {
+    tr.gain.gain.setTargetAtTime(0, now, 0.3);
+    try { tr.src.stop(now + 1.0); } catch {}
+    delete bgmTracks[name];
+  }
+  currentBgm = null;
 }

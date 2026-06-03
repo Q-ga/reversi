@@ -10,8 +10,8 @@ const BOARD = 10; // 盤プレーンのワールドサイズ
 const LINES = [46, 190, 336, 482, 627, 772, 916, 1062, 1205].map((p) => p / 1254);
 const CENTERS = LINES.slice(0, 8).map((_, i) => (LINES[i] + LINES[i + 1]) / 2);
 const PITCH = (LINES[8] - LINES[0]) / 8; // 1マスの正規化幅
-const STONE_R = PITCH * BOARD * 0.42;
-const STONE_H = STONE_R * 0.6;
+const STONE_R = PITCH * BOARD * 0.42; // 直径≈マスの0.84（実物比）
+const STONE_H = STONE_R * 0.42;       // 厚み≈直径の0.21（薄いコイン）
 
 // マス(r,c)→ワールド座標。c=列(x), r=行(z)。行0を画面奥(-z)に。
 function cellToWorld(r, c) {
@@ -34,31 +34,29 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   renderer.domElement.style.display = "block";
 
   const scene = new THREE.Scene();
+  // デバッグ用：?slow=6 でアニメをN倍遅くして途中コマを確認できる
+  const SPEED = Math.max(1, Number(new URLSearchParams(location.search).get("slow")) || 1);
 
-  // カメラ：ほぼ真上、ごく僅かに手前へ寄せて石の厚みが分かる程度
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  camera.position.set(0, 17, 2.4);
+  // カメラ：真上から見下ろし（ごく僅かに寄せて浮上した石が分かる程度）
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+  camera.position.set(0, 18, 1.6);
   camera.lookAt(0, 0, 0);
 
-  // ライト：環境光＋上方キーライト(影)＋フィル＋リム
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x202830, 0.55));
-  const key = new THREE.DirectionalLight(0xfff2d8, 1.25);
-  key.position.set(-6, 14, 6);
+  // ライト：均一に当てて中央ハイライト(=球っぽさ)を作らない。
+  // 石の陰影は面テクスチャ(中央暗→縁明)で出し、影は接地用にだけ落とす。
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x39414c, 1.0));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const key = new THREE.DirectionalLight(0xffffff, 0.5);
+  key.position.set(-3, 13, 4);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 40;
   const sc = key.shadow.camera;
   sc.left = -7; sc.right = 7; sc.top = 7; sc.bottom = -7;
-  key.shadow.bias = -0.0005;
-  key.shadow.radius = 4;
+  key.shadow.bias = -0.0006;
+  key.shadow.radius = 5;
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xbfd0ff, 0.35);
-  fill.position.set(7, 8, -5);
-  scene.add(fill);
-  const rim = new THREE.PointLight(0xffe9b0, 0.5, 40);
-  rim.position.set(0, 6, -8);
-  scene.add(rim);
 
   // 盤（画像を貼った薄い箱）
   const tex = new THREE.TextureLoader().load(textureUrl);
@@ -74,16 +72,43 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   board.receiveShadow = true;
   scene.add(board);
 
-  // 石マテリアル（黒=光沢/白=半マット/側面は黒白2段）
-  const blackMat = new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.16, metalness: 0.0 });
-  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf3f1ea, roughness: 0.5, metalness: 0.0 });
+  // 石の面テクスチャ：中央暗→縁明（フラットな円盤に見せ、碁石=中央ハイライトの球を避ける）
+  function makeDiscTexture(stops) {
+    const s = 256;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = s;
+    const ctx = cv.getContext("2d");
+    const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.05, s / 2, s / 2, s * 0.5);
+    for (const [pos, col] of stops) g.addColorStop(pos, col);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(s / 2, s / 2, s * 0.5, 0, Math.PI * 2); ctx.fill();
+    const t = new THREE.CanvasTexture(cv);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return t;
+  }
+  const blackFaceTex = makeDiscTexture([[0, "#000000"], [0.75, "#020202"], [0.93, "#070707"], [0.99, "#0d0d0d"], [1, "#050505"]]);
+  const whiteFaceTex = makeDiscTexture([[0, "#d4d2c9"], [0.5, "#e6e4dc"], [0.88, "#ffffff"], [1, "#efeee7"]]);
 
-  // 石ジオメトリ：上半分(黒)＋下半分(白)の2段円柱でequatorの境目を出す
+  // 黒=上半分（上面＝顔テクスチャ／側面＝黒）、白=下半分（下面＝顔テクスチャ／側面＝白）
+  const blackFaceMat = new THREE.MeshStandardMaterial({ map: blackFaceTex, roughness: 0.4, metalness: 0.0 });
+  const blackEdgeMat = new THREE.MeshStandardMaterial({ color: 0x070707, roughness: 0.55, metalness: 0.0 });
+  const whiteFaceMat = new THREE.MeshStandardMaterial({ map: whiteFaceTex, roughness: 0.55, metalness: 0.0 });
+  const whiteEdgeMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.6, metalness: 0.0 });
+
+  // 石ジオメトリ：上半分(黒)＋下半分(白)の2段円柱。赤道で黒白が分かれ、90°で半々の断面が出る。
+  // CylinderGeometryのマテリアル配列順 = [側面, 上面cap, 下面cap]
   function makeStone() {
     const g = new THREE.Group();
-    const upper = new THREE.Mesh(new THREE.CylinderGeometry(STONE_R, STONE_R, STONE_H / 2, 48), blackMat);
+    const upper = new THREE.Mesh(
+      new THREE.CylinderGeometry(STONE_R, STONE_R, STONE_H / 2, 56),
+      [blackEdgeMat, blackFaceMat, blackEdgeMat] // 上面=黒テクスチャ、下面(赤道側)は隠れる
+    );
     upper.position.y = STONE_H / 4;
-    const lower = new THREE.Mesh(new THREE.CylinderGeometry(STONE_R, STONE_R, STONE_H / 2, 48), whiteMat);
+    const lower = new THREE.Mesh(
+      new THREE.CylinderGeometry(STONE_R, STONE_R, STONE_H / 2, 56),
+      [whiteEdgeMat, whiteEdgeMat, whiteFaceMat] // 下面=白テクスチャ、上面(赤道側)は隠れる
+    );
     lower.position.y = -STONE_H / 4;
     for (const m of [upper, lower]) { m.castShadow = true; m.receiveShadow = false; }
     g.add(upper, lower);
@@ -100,7 +125,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   scene.add(stoneGroup);
   const stoneMap = new Map(); // "r,c" -> {group, color}
 
-  function colorToRotX(color) { return color === BLACK ? 0 : Math.PI; }
+  function colorToFlip(color) { return color === BLACK ? 0 : Math.PI; }
 
   function placeStone(r, c, color, instant = true) {
     const key = `${r},${c}`;
@@ -115,7 +140,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     }
     entry.color = color;
     if (instant) {
-      entry.group.rotation.x = colorToRotX(color);
+      entry.group.rotation.z = colorToFlip(color); // Z軸=左右(左から)めくり
       entry.group.position.y = STONE_H / 2;
       entry.group.scale.setScalar(1);
     }
@@ -222,32 +247,37 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   loop();
 
   // 着手石を上から落として着地（ドロップイン）
+  const LIFT = STONE_R * 2.2; // 浮上の高さ（実例Marmelab=持ち上げて回転して着地）
+
   function dropIn(group) {
     const restY = STONE_H / 2;
-    const fromY = restY + 2.2;
-    addTween(360, (p) => {
+    const fromY = restY + LIFT * 1.6;
+    addTween(380 * SPEED, (p) => {
       const e = easeOutBack(p);
       group.position.y = fromY + (restY - fromY) * e;
-      const s = 0.5 + 0.5 * easeOutCubic(p);
+      const s = 0.55 + 0.45 * easeOutCubic(p);
       group.scale.setScalar(s);
     }, () => { group.position.y = restY; group.scale.setScalar(1); });
   }
 
-  // 1枚を立体的に裏返す（軸回転＋小ホップ＋着地オーバーシュート）
-  function flipStone(entry, toColor, dur = 460) {
-    const from = entry.group.rotation.x;
-    const to = colorToRotX(toColor);
+  // 1枚を裏返す：盤から浮き上がりながらX軸180°回転し着地（90°で黒白半々の断面）。
+  function flipStone(entry, toColor, dur = 480) {
+    const from = entry.group.rotation.z;
+    const to = colorToFlip(toColor);
     entry.color = toColor;
     const restY = STONE_H / 2;
-    addTween(dur, (p) => {
-      const e = easeOutBack(p);            // 着地で軽くオーバーシュート＝バウンド
-      entry.group.rotation.x = from + (to - from) * e;
-      entry.group.position.y = restY + Math.sin(Math.min(p, 1) * Math.PI) * (STONE_R * 0.5); // 浮き上がり
-    }, () => { entry.group.rotation.x = to; entry.group.position.y = restY; });
+    addTween(dur * SPEED, (p) => {
+      // 回転は等速感のあるeaseInOutCubic→90°(黒白半々)がちょうど中間に来る。Z軸=左からめくる
+      entry.group.rotation.z = from + (to - from) * easeInOutCubic(p);
+      // 浮上は中間(=edge-on)で最高、最後に軽くバウンドして着地
+      const hop = Math.sin(Math.min(p, 1) * Math.PI) * LIFT;
+      const bounce = p > 0.82 ? Math.sin((p - 0.82) / 0.18 * Math.PI) * STONE_H * 0.5 : 0;
+      entry.group.position.y = restY + hop + bounce;
+    }, () => { entry.group.rotation.z = to; entry.group.position.y = restY; });
   }
 
-  // 重なる波の連鎖めくり。置石から距離順に、前の石が回り切る前に次を開始。
-  function animateMove(prevBoard, nextBoard, move, color, onFlip, stepMs = 70) {
+  // 重なる波の連鎖めくり。置石から距離順に、前の石が回り切る前に次を開始（実例stagger≒50ms）。
+  function animateMove(prevBoard, nextBoard, move, color, onFlip, stepMs = 55) {
     return new Promise((resolve) => {
       const placed = placeStone(move.r, move.c, color, true);
       dropIn(placed.group);
@@ -266,8 +296,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
           const entry = stoneMap.get(`${f.r},${f.c}`);
           if (entry) flipStone(entry, nextBoard[f.r][f.c]);
           onFlip(i);
-          if (i === flips.length - 1) setTimeout(resolve, 460);
-        }, i * stepMs);
+          if (i === flips.length - 1) setTimeout(resolve, 500 * SPEED);
+        }, i * stepMs * SPEED);
       });
     });
   }
