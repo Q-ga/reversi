@@ -275,8 +275,16 @@
   </script>
   <script type="module" src="./src/main.js"></script>
   <script>
+    // 開発中(localhost)はSWを無効化＋キャッシュ全削除（旧JS/音が残るのを防ぐ）。
+    // 本番(GitHub Pages等)でのみSWを登録してオフライン対応する。
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+      const isDev = ["localhost", "127.0.0.1"].includes(location.hostname);
+      if (isDev) {
+        navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister()));
+        if (window.caches) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k)));
+      } else {
+        window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+      }
     }
   </script>
 </body>

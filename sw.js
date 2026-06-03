@@ -1,5 +1,5 @@
 // オフライン対応のサービスワーカー（アプリシェルをキャッシュ）。
-const CACHE = "reversi-v4";
+const CACHE = "reversi-v5";
 const ASSETS = [
   "./",
   "./index.html",
@@ -25,7 +25,8 @@ const ASSETS = [
   "./vendor/three.module.js",
   "./textures/board.png",
   "./audio/place.wav",
-  "./audio/flip.wav",
+  "./audio/flip_lift.wav",
+  "./audio/flip_land.wav",
   "./audio/bell.wav",
   "./audio/reversal.wav",
   "./audio/fanfare_win.wav",

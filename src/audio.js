@@ -2,7 +2,8 @@
 // iOS制約：init() は最初のユーザー操作後に呼ぶ。BGMと効果音は別々にミュート可。
 const SFX_FILES = {
   place: "./audio/place.wav",
-  flip: "./audio/flip.wav",
+  flip_lift: "./audio/flip_lift.wav",
+  flip_land: "./audio/flip_land.wav",
   bell: "./audio/bell.wav",
   reversal: "./audio/reversal.wav",
   fanfare_win: "./audio/fanfare_win.wav",
@@ -27,7 +28,7 @@ let currentBgm = null;
 let bgmRunning = false;
 
 // 音源を更新したらここを上げる（Service Worker等の旧キャッシュを確実に回避）
-const AUDIO_VER = 4;
+const AUDIO_VER = 5;
 // モジュール読込時にファイルを先読み（decodeはinit後）
 for (const [k, url] of Object.entries({ ...SFX_FILES, ...BGM_FILES })) {
   fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
@@ -65,8 +66,13 @@ function playBuffer(name, { rate = 1, gain = 1 } = {}) {
 
 // ---- 効果音 ----
 export function playPlace() { playBuffer("place", { gain: 0.9 }); }
-// 連鎖めくり：indexが進むほど音程上昇（滝）
-export function playFlip(i = 0) { playBuffer("flip", { rate: 1 + Math.min(i, 14) * 0.05, gain: 0.7 }); }
+// 連鎖めくり：スッと持ち上げる音→約0.44秒後にコツっと置く音（アニメの浮上→着地に同期）。
+// indexが進むほど音程上昇＝滝の連鎖。
+export function playFlip(i = 0) {
+  const rate = 1 + Math.min(i, 14) * 0.05;
+  playBuffer("flip_lift", { rate, gain: 0.6 });
+  setTimeout(() => playBuffer("flip_land", { rate, gain: 0.6 }), 440);
+}
 
 const EVENT_SOUND = {
   corner: ["bell", 0.9],

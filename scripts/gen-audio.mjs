@@ -99,27 +99,47 @@ const SR = 44100;
   console.log("✔", writeWav("place.wav", normalize(b, 0.97), SR));
 }
 
-// 返し：短いクリック（前バージョンの感触に戻す）。playbackRateを上げて音程上昇＝滝の連鎖。
+// 返し(1)：スッと持ち上げる音（柔らかい上昇ウーッシュ）
 {
-  const b = blank(0.10, SR);
-  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.4 * Math.exp(-t / 0.008); }
-  lowpass(b, 4000, SR);
-  tone(b, SR, { type: "tri", freq: 520, t0: 0, dur: 0.09, gain: 0.4, decay: 0.04 });
-  console.log("✔", writeWav("flip.wav", b, SR));
+  const b = blank(0.22, SR);
+  for (let i = 0; i < b.length; i++) {
+    const t = i / SR, env = Math.sin(Math.min(t / 0.22, 1) * Math.PI);
+    b[i] += noise() * 0.45 * env;                                  // 空気感
+    b[i] += Math.sin(TAU * (300 + 520 * (t / 0.22)) * t) * 0.10 * env; // 上昇の芯
+  }
+  lowpass(b, 2000, SR);
+  console.log("✔", writeWav("flip_lift.wav", normalize(b, 0.5), SR));
 }
 
-// 角取り：金属的な「シャキーン」（立ち上がりの上昇＋高倍音のきらめき＋残響）。音量は控えめ。
+// 返し(2)：コツっと置く音（軽い木のタップ。着地で鳴らす）
+{
+  const b = blank(0.10, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.5 * Math.exp(-t / 0.005); }
+  lowpass(b, 6500, SR);
+  tone(b, SR, { type: "sine", freq: 720, t0: 0, dur: 0.05, gain: 0.4, decay: 0.02 });
+  tone(b, SR, { type: "sine", freq: 380, t0: 0, dur: 0.07, gain: 0.25, decay: 0.03 });
+  console.log("✔", writeWav("flip_land.wav", normalize(b, 0.7), SR));
+}
+
+// 角取り：剣を抜くような「シャキーン」（長めの上昇金属スウィング＋金属リング＋残響）。音量控えめ。
 {
   const b = blank(2.2, SR);
-  // 立ち上がりの上昇スウィング（shing！）
-  for (let i = 0; i < (0.12 * SR) | 0; i++) { const t = i / SR; const f = 1800 + 4200 * (t / 0.12); b[i] += Math.sin(TAU * f * t) * 0.3 * Math.exp(-t / 0.07); }
-  // 金属的な高倍音（inharmonic）
-  [2050, 2760, 3380, 4190, 5300, 6400].forEach((f, k) =>
-    tone(b, SR, { type: "sine", freq: f, t0: 0, dur: 1.2, gain: 0.2 / (1 + k * 0.35), attack: 0.001, decay: 0.32 }));
-  // きらめきの粒（高域ノイズの短い減衰）
-  for (let i = 0; i < (0.25 * SR) | 0; i++) { const t = i / SR; b[i] += noise() * 0.05 * Math.exp(-t / 0.04); }
-  const wet = reverb(b, SR, { decay: 2.0, mix: 0.45 });
-  console.log("✔", writeWav("bell.wav", normalize(wet, 0.7), SR)); // 控えめ音量
+  // 上昇する金属スウィング（shiiing）— やや長め
+  const sw = (0.34 * SR) | 0;
+  for (let i = 0; i < sw; i++) {
+    const t = i / SR, p = t / 0.34;
+    const f = 1400 + 5200 * p * p;                 // 加速して駆け上がる
+    const env = Math.sin(Math.min(p, 1) * Math.PI) * 0.9;
+    b[i] += Math.sin(TAU * f * t) * 0.22 * env;
+    b[i] += Math.sin(TAU * f * 1.5 * t) * 0.10 * env; // 金属感の上倍音
+  }
+  // 頂点で鳴る金属リング（inharmonic・余韻）
+  [3000, 4050, 5200, 6300].forEach((f, k) =>
+    tone(b, SR, { type: "sine", freq: f, t0: 0.28, dur: 1.4, gain: 0.16 / (1 + k * 0.4), attack: 0.002, decay: 0.4 }));
+  // きらめきの粒
+  for (let i = (0.28 * SR) | 0; i < (0.55 * SR) | 0; i++) { const t = (i - 0.28 * SR) / SR; b[i] += noise() * 0.05 * Math.exp(-t / 0.05); }
+  const wet = reverb(b, SR, { decay: 1.9, mix: 0.4 });
+  console.log("✔", writeWav("bell.wav", normalize(wet, 0.7), SR));
 }
 
 // 逆転：駆け上がるスイープ
