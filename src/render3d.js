@@ -277,7 +277,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
 
   // 重なる波の連鎖めくり。置石から距離順に、前の石が回り切る前に次を開始（実例stagger≒50ms）。
-  function animateMove(prevBoard, nextBoard, move, color, onFlip, stepMs = 55) {
+  function animateMove(prevBoard, nextBoard, move, color, onFlip, stepMs = 95) {
     return new Promise((resolve) => {
       const placed = placeStone(move.r, move.c, color, true);
       dropIn(placed.group);

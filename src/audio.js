@@ -27,7 +27,7 @@ let currentBgm = null;
 let bgmRunning = false;
 
 // 音源を更新したらここを上げる（Service Worker等の旧キャッシュを確実に回避）
-const AUDIO_VER = 6;
+const AUDIO_VER = 7;
 // モジュール読込時にファイルを先読み（decodeはinit後）
 for (const [k, url] of Object.entries({ ...SFX_FILES, ...BGM_FILES })) {
   fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
@@ -69,8 +69,8 @@ export function playPlace() { playBuffer("place", { gain: 0.9 }); }
 // 「スッ、ココここコツ」。indexが進むほど音程上昇＝滝の連鎖。
 export function playFlip(i = 0) {
   const rate = 1 + Math.min(i, 14) * 0.045;
-  if (i === 0) playBuffer("flip_lift", { gain: 0.4 }); // スッ（手ごとに1回）
-  playBuffer("flip_land", { rate, gain: 0.6 });        // コッ（連鎖で上昇）
+  if (i === 0) playBuffer("flip_lift", { gain: 0.22 }); // スッ（小さくスッキリ・手ごとに1回）
+  playBuffer("flip_land", { rate, gain: 0.9 });         // コッ（大きめ・連鎖で上昇）
 }
 
 const EVENT_SOUND = {

@@ -99,16 +99,13 @@ const SR = 44100;
   console.log("✔", writeWav("place.wav", normalize(b, 0.97), SR));
 }
 
-// 返し(1)：スッと持ち上げる音（柔らかい上昇ウーッシュ）
+// 返し(1)：スッと持ち上げる音（短くスッキリ。washy/リバーブ感なし）
 {
-  const b = blank(0.22, SR);
-  for (let i = 0; i < b.length; i++) {
-    const t = i / SR, env = Math.sin(Math.min(t / 0.22, 1) * Math.PI);
-    b[i] += noise() * 0.45 * env;                                  // 空気感
-    b[i] += Math.sin(TAU * (300 + 520 * (t / 0.22)) * t) * 0.10 * env; // 上昇の芯
-  }
-  lowpass(b, 2000, SR);
-  console.log("✔", writeWav("flip_lift.wav", normalize(b, 0.5), SR));
+  const b = blank(0.10, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.45 * Math.exp(-t / 0.022); } // 短い気配
+  for (let i = 0; i < (0.06 * SR) | 0; i++) { const t = i / SR; b[i] += Math.sin(TAU * (620 + 760 * (t / 0.06)) * t) * 0.10 * Math.exp(-t / 0.03); } // 上昇の芯
+  lowpass(b, 3600, SR);
+  console.log("✔", writeWav("flip_lift.wav", normalize(b, 0.45), SR));
 }
 
 // 返し(2)：コッと置く重厚な木のタップ（低め）。連鎖でこれが「ココここコツ」と連打される。
