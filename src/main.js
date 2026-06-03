@@ -2,14 +2,13 @@
 import { BLACK, WHITE, count } from "./rules.js";
 import { newGame, play, undo, gameResult } from "./game.js";
 import { chooseCpuMove, assessForm } from "./evaluate.js";
-import { buildBoard, renderBoard, animateMove, clearHints } from "./render.js";
+import { createBoardView } from "./render3d.js";
 import { detectEvents } from "./events.js";
 import { kifuFromMoves } from "./notation.js";
 import { swapColors, shouldRecord } from "./match.js";
 import { statsForUser, headToHead } from "./stats.js";
 import { buildCSV, buildJSON } from "./exporter.js";
 import * as audio from "./audio.js";
-import { applyEffects } from "./effects.js";
 import {
   listProfiles, addProfile, updateProfile, deleteProfile, addGame, listGames, MAX_PROFILES,
 } from "./storage.js";
@@ -22,13 +21,11 @@ let profiles = [];
 let setup = { mode: "2p", black: null, white: null, mainId: null, level: 2, hints: true };
 let match = null; // { assignment, mainColor, mode, level, hints, startedAt, moves }
 let state = null;
-let cells = null;
+let view = null; // three.jsの盤ビュー（初回startMatchで生成し再利用）
 let busy = false;
 let cpuTimerId = null;
 
 const $ = (id) => document.getElementById(id);
-const boardEl = $("board");
-const fxLayer = $("fx-layer");
 
 function showScreen(name) {
   for (const s of document.querySelectorAll(".screen")) s.classList.remove("active");
@@ -127,11 +124,11 @@ function startMatch(cfg) {
   busy = false;
   match = { ...cfg, startedAt: Date.now(), moves: [] };
   state = newGame(BLACK);
-  cells = buildBoard(boardEl, onCell);
+  if (!view) view = createBoardView($("board3d"), onCell);
   $("snd-bgm").checked = audio.isBgmEnabled();
   $("snd-sfx").checked = audio.isSfxEnabled();
   showScreen("game");
-  renderBoard(cells, state, match.hints);
+  view.sync(state, match.hints);
   renderPanels();
   audio.startBgm();
   audio.setBand(assessForm(state.board, match.mainColor).band);
@@ -194,14 +191,14 @@ async function doMove(r, c) {
   const next = play(state, r, c);
   if (next === before) return; // 非合法
   busy = true;
-  clearHints(cells);
+  view.clearHints();
 
   const color = state.current;
   const flippedCount = count(next.board, color) - count(state.board, color) - 1;
   match.moves.push({ r, c });
   audio.playPlace();
 
-  await animateMove(cells, state.board, next.board, { r, c }, color, (i) => audio.playFlip(i));
+  await view.animateMove(state.board, next.board, { r, c }, color, (i) => audio.playFlip(i));
 
   const prev = state;
   state = next;
@@ -209,26 +206,19 @@ async function doMove(r, c) {
   // パスが起きていたら棋譜にも記録
   if (state.passed) match.moves.push({ pass: true });
 
-  // 形勢→BGM、スポット演出
+  // 形勢→BGM
   const form = assessForm(state.board, match.mainColor);
   audio.setBand(form.band);
-  const lastCell = cellCenter(r, c);
+  // スポット演出はR4でシーン内に実装。判定だけ算出しておく。
   const tags = detectEvents(prev, state, { r, c }, flippedCount, match.mainColor);
-  applyEffects(tags, { boardEl, fxLayer, lastCell, flippedCount });
+  if (view.applyEffects) view.applyEffects(tags, { r, c, flippedCount, color, mainColor: match.mainColor });
 
-  renderBoard(cells, state, match.hints);
+  view.renderHints(state, match.hints);
   renderPanels();
   updateMessage();
   busy = false;
 
   if (state.over) finishGame();
-}
-
-function cellCenter(r, c) {
-  const cell = cells[r][c];
-  const br = boardEl.getBoundingClientRect();
-  const cr = cell.getBoundingClientRect();
-  return { x: cr.left - br.left + cr.width / 2, y: cr.top - br.top + cr.height / 2 };
 }
 
 function maybeCpuTurn() {
@@ -312,7 +302,7 @@ $("btn-undo").addEventListener("click", async () => {
   );
   // 棋譜も巻き戻し（簡易：末尾を落とす）
   match.moves = match.moves.slice(0, state.history.length);
-  renderBoard(cells, state, match.hints);
+  view.sync(state, match.hints);
   renderPanels();
   updateMessage();
   audio.setBand(assessForm(state.board, match.mainColor).band);

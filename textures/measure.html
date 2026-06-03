@@ -1,0 +1,29 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+<pre id="out">measuring...</pre>
+<script>
+const img=new Image();
+img.onload=()=>{
+  const W=img.width,H=img.height;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');ctx.drawImage(img,0,0);
+  const isGold=(r,g,b)=> r>140 && g>105 && b<130 && (r-b)>40 && (g-b)>10;
+  function lines(getPx,len){
+    // goldピクセルの連続クラスタ中心を返す
+    const cl=[];let run=null;
+    for(let i=0;i<len;i++){const [r,g,b]=getPx(i);
+      if(isGold(r,g,b)){ if(!run)run=[i,i]; else run[1]=i; }
+      else { if(run){cl.push((run[0]+run[1])/2); run=null;} }
+    }
+    if(run)cl.push((run[0]+run[1])/2);
+    return cl;
+  }
+  const midY=Math.floor(H/2), midX=Math.floor(W/2);
+  const rowData=ctx.getImageData(0,midY,W,1).data;
+  const colData=ctx.getImageData(midX,0,1,H).data;
+  const vx=lines(i=>[rowData[i*4],rowData[i*4+1],rowData[i*4+2]],W);
+  const hy=lines(i=>[colData[i*4],colData[i*4+1],colData[i*4+2]],H);
+  document.getElementById('out').textContent=JSON.stringify({W,H,verticalLines:vx.map(n=>Math.round(n)),horizontalLines:hy.map(n=>Math.round(n))},null,1);
+};
+img.src='./board.png';
+</script>
+</body></html>

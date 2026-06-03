@@ -70,29 +70,65 @@
   #message{ min-height:20px; font-size:14px; color:var(--accent); }
 
   .board-wrap{ position:relative; width:min(92vw,460px); height:min(92vw,460px); }
+  #board3d{ position:absolute; inset:0; }
   .board{
     position:absolute; inset:0;
     display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
-    gap:0; padding:10px; border-radius:10px;
+    gap:0; padding:12px; border-radius:14px;
     background:
-      repeating-linear-gradient(90deg, transparent 0 12.5%, rgba(0,0,0,.12) 12.5% 12.5%),
-      linear-gradient(135deg,var(--felt1),var(--felt2));
-    border:12px solid var(--wood1);
-    box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 0 0 2px var(--wood2),
-      inset 0 0 40px rgba(0,0,0,.35);
+      /* フェルトの織り目（SVGノイズ） */
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.16'/%3E%3C/svg%3E"),
+      radial-gradient(120% 120% at 70% 85%, rgba(0,30,18,.55), transparent 60%),
+      radial-gradient(130% 130% at 30% 15%, rgba(255,255,255,.10), transparent 55%),
+      linear-gradient(150deg,#2f955f,#1d7048 70%,#175c3b);
+    background-blend-mode: overlay, normal, screen, normal;
+    /* 木目フレーム（SVGノイズを縦に伸ばして年輪風に） */
+    border:14px solid transparent;
+    border-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.14' numOctaves='4' seed='7'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.26  0 0 0 0 0.12  0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%235a3618'/%3E%3Crect width='100%25' height='100%25' filter='url(%23w)' opacity='0.9'/%3E%3C/svg%3E") 28 round;
+    box-shadow:0 16px 40px rgba(0,0,0,.55), inset 0 0 60px rgba(0,0,0,.4),
+      inset 0 2px 6px rgba(255,255,255,.08);
   }
+  /* 盤面の四隅を少し暗く（ビネット） */
+  .board::after{ content:""; position:absolute; inset:12px; border-radius:6px; pointer-events:none;
+    box-shadow: inset 0 0 50px rgba(0,0,0,.45); }
   .cell{ position:relative; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-  .cell::before{ content:""; position:absolute; inset:0; box-shadow: inset 0 0 0 1px var(--line); }
-  .disc{ width:82%; height:82%; border-radius:50%; z-index:1; position:relative;
-    box-shadow:0 2px 3px rgba(0,0,0,.45); }
-  .disc.black{ background:radial-gradient(circle at 35% 28%,#6a6a6a,#111 60%,#000); }
-  .disc.white{ background:radial-gradient(circle at 35% 28%,#fff,#cfcfcf 60%,#a9a9a9); }
-  .disc.pop{ animation:pop .22s ease; }
-  .disc.flipping{ animation:flip .28s ease; }
-  @keyframes pop{ 0%{transform:scale(.1);} 70%{transform:scale(1.15);} 100%{transform:scale(1);} }
-  @keyframes flip{ 0%{transform:rotateY(0) scale(1);} 50%{transform:rotateY(90deg) scale(.85);} 100%{transform:rotateY(0) scale(1);} }
-  .cell.hint::after{ content:""; width:26%; height:26%; border-radius:50%; background:rgba(255,255,255,.4); z-index:1; animation:pulse 1.2s infinite; }
-  @keyframes pulse{ 0%,100%{opacity:.35;} 50%{opacity:.7;} }
+  .cell::before{ content:""; position:absolute; inset:0; box-shadow: inset 0 0 0 1px rgba(8,40,26,.85); }
+
+  /* 星（打点）：盤の (2,2)(2,6)(6,2)(6,6) の交点に置く */
+  .star{ position:absolute; width:9px; height:9px; border-radius:50%;
+    background:rgba(6,30,20,.85); transform:translate(-50%,-50%); z-index:2; pointer-events:none;
+    box-shadow:0 1px 1px rgba(255,255,255,.12); }
+
+  /* 立体めくり石（フリップカード方式：disc に perspective を持たせる） */
+  .disc{ width:84%; height:84%; position:relative; z-index:1; perspective:560px; }
+  .disc.pop{ animation:pop .24s ease; }
+  @keyframes pop{ 0%{transform:scale(.1);} 70%{transform:scale(1.12);} 100%{transform:scale(1);} }
+  .d3{ position:absolute; inset:0; transform-style:preserve-3d;
+    transition: transform .5s cubic-bezier(.45,.05,.3,1); will-change:transform; }
+  .board.instant .d3{ transition:none; }
+  /* 回転中に少し浮き上がらせて立体感を強調 */
+  .d3.b{ transform: rotateY(0deg) translateZ(0); }
+  .d3.w{ transform: rotateY(180deg) translateZ(0); }
+  .face{ position:absolute; inset:0; border-radius:50%;
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+    box-shadow:0 4px 7px rgba(0,0,0,.5), inset 0 -3px 6px rgba(0,0,0,.45),
+      inset 0 3px 5px rgba(255,255,255,.18); }
+  /* 表＝黒 */
+  .face.front{ background:radial-gradient(circle at 36% 26%, #7a7a7a 0%, #2a2a2a 42%, #050505 100%); }
+  /* 裏＝白（180°回しておく） */
+  .face.back{ transform: rotateY(180deg);
+    background:radial-gradient(circle at 36% 26%, #ffffff 0%, #e2e2e2 45%, #b3b3b3 100%); }
+  /* ツヤ（スペキュラのハイライト） */
+  .face::after{ content:""; position:absolute; left:22%; top:14%; width:34%; height:24%;
+    border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.75), transparent 70%);
+    filter:blur(1px); }
+  .face.front::after{ background:radial-gradient(circle, rgba(255,255,255,.45), transparent 70%); }
+
+  .cell.hint::after{ content:""; width:24%; height:24%; border-radius:50%;
+    background:radial-gradient(circle, rgba(255,255,255,.55), rgba(255,255,255,.15));
+    z-index:1; animation:pulse 1.3s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.4; transform:scale(.85);} 50%{opacity:.8; transform:scale(1);} }
 
   .board.shake{ animation:shake .35s; }
   @keyframes shake{ 0%,100%{transform:translate(0,0);} 20%{transform:translate(-6px,3px);} 40%{transform:translate(6px,-3px);} 60%{transform:translate(-4px,-2px);} 80%{transform:translate(4px,2px);} }
@@ -190,8 +226,7 @@
     <div class="panel-player" id="panel-top"></div>
     <div id="message">　</div>
     <div class="board-wrap">
-      <div class="board" id="board"></div>
-      <div class="fx-layer" id="fx-layer"></div>
+      <div id="board3d"></div>
     </div>
     <div class="panel-player" id="panel-bottom"></div>
     <div class="controls">
@@ -235,6 +270,9 @@
     </div>
   </div>
 
+  <script type="importmap">
+  { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
   <script type="module" src="./src/main.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
