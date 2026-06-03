@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="リバーシ">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<title>リバーシ</title>
+<style>
+  :root {
+    --felt1: #2a8a5b; --felt2: #1f7a4d; --line: #134a32;
+    --wood1: #6b4423; --wood2: #4a2e16;
+    --bg: #0f172a; --panel: #1e293b; --panel2:#273449;
+    --text: #e8eef5; --muted:#9fb0c3; --accent: #38bdf8; --gold:#ffd54a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body { height: 100%; }
+  body {
+    margin: 0; min-height: 100%;
+    background: radial-gradient(circle at 50% 0%, #16233c, var(--bg));
+    color: var(--text);
+    font-family: "Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif;
+    user-select: none; -webkit-user-select: none;
+    display: flex; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .screen { display: none; width: 100%; max-width: 520px; padding: 18px; }
+  .screen.active { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  h1.logo { margin: 6px 0; font-size: 34px; letter-spacing: 8px; font-weight: 800;
+    background: linear-gradient(180deg,#fff,#9fc4e6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-top: -8px; }
+
+  button { font-family: inherit; cursor: pointer; border: none; border-radius: 12px; }
+  .btn-primary { background: linear-gradient(180deg,#4cc2f5,#2aa0e0); color:#06283d; font-weight:800; font-size:17px; padding:15px 22px; width:100%; box-shadow:0 4px 0 #1d7fb8; }
+  .btn-primary:active { transform: translateY(2px); box-shadow:0 2px 0 #1d7fb8; }
+  .btn-sub { background: var(--panel2); color: var(--text); font-weight:700; font-size:15px; padding:13px 18px; width:100%; }
+  .btn-row { display:flex; gap:10px; width:100%; }
+  .btn-row > button { flex:1; }
+  .menu-list { display:flex; flex-direction:column; gap:12px; width:100%; max-width:340px; }
+
+  .card { background: var(--panel); border-radius:16px; padding:16px; width:100%; }
+  .card h2 { margin:0 0 12px; font-size:16px; }
+  .field { margin-bottom:14px; }
+  .field > label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .seg { display:flex; gap:8px; flex-wrap:wrap; }
+  .seg button { background:var(--panel2); color:var(--text); padding:10px 14px; font-size:14px; border:2px solid transparent; }
+  .seg button.sel { border-color: var(--accent); color:#fff; background:#21506e; }
+  .toggle { display:flex; gap:8px; align-items:center; font-size:14px; }
+  input[type=text]{ width:100%; padding:11px; border-radius:10px; border:1px solid #33445c; background:#0e1726; color:var(--text); font-size:15px; font-family:inherit; }
+
+  /* --- 対局画面 --- */
+  .panel-player { display:flex; align-items:center; justify-content:space-between; width:100%; max-width:460px;
+    background:var(--panel); border-radius:12px; padding:10px 14px; border:2px solid transparent; transition:.25s; }
+  .panel-player.flip { transform: rotate(180deg); }
+  .panel-player.main { border-color: var(--gold); box-shadow:0 0 14px rgba(255,213,74,.45); }
+  .panel-player.dim { opacity:.55; }
+  .panel-player.turn { background:#21506e; }
+  .pp-left { display:flex; align-items:center; gap:10px; }
+  .pp-name { font-weight:700; font-size:15px; }
+  .badge-main { font-size:11px; background:var(--gold); color:#3a2a00; padding:2px 7px; border-radius:8px; font-weight:800; margin-left:6px; }
+  .pp-count { font-size:22px; font-variant-numeric:tabular-nums; font-weight:800; }
+  .disc-mini{ width:22px;height:22px;border-radius:50%; }
+  .disc-mini.black{ background:radial-gradient(circle at 35% 30%,#555,#000);}
+  .disc-mini.white{ background:radial-gradient(circle at 35% 30%,#fff,#bbb);}
+
+  #message{ min-height:20px; font-size:14px; color:var(--accent); }
+
+  .board-wrap{ position:relative; width:min(92vw,460px); height:min(92vw,460px); }
+  .board{
+    position:absolute; inset:0;
+    display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
+    gap:0; padding:10px; border-radius:10px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 12.5%, rgba(0,0,0,.12) 12.5% 12.5%),
+      linear-gradient(135deg,var(--felt1),var(--felt2));
+    border:12px solid var(--wood1);
+    box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 0 0 2px var(--wood2),
+      inset 0 0 40px rgba(0,0,0,.35);
+  }
+  .cell{ position:relative; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .cell::before{ content:""; position:absolute; inset:0; box-shadow: inset 0 0 0 1px var(--line); }
+  .disc{ width:82%; height:82%; border-radius:50%; z-index:1; position:relative;
+    box-shadow:0 2px 3px rgba(0,0,0,.45); }
+  .disc.black{ background:radial-gradient(circle at 35% 28%,#6a6a6a,#111 60%,#000); }
+  .disc.white{ background:radial-gradient(circle at 35% 28%,#fff,#cfcfcf 60%,#a9a9a9); }
+  .disc.pop{ animation:pop .22s ease; }
+  .disc.flipping{ animation:flip .28s ease; }
+  @keyframes pop{ 0%{transform:scale(.1);} 70%{transform:scale(1.15);} 100%{transform:scale(1);} }
+  @keyframes flip{ 0%{transform:rotateY(0) scale(1);} 50%{transform:rotateY(90deg) scale(.85);} 100%{transform:rotateY(0) scale(1);} }
+  .cell.hint::after{ content:""; width:26%; height:26%; border-radius:50%; background:rgba(255,255,255,.4); z-index:1; animation:pulse 1.2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.35;} 50%{opacity:.7;} }
+
+  .board.shake{ animation:shake .35s; }
+  @keyframes shake{ 0%,100%{transform:translate(0,0);} 20%{transform:translate(-6px,3px);} 40%{transform:translate(6px,-3px);} 60%{transform:translate(-4px,-2px);} 80%{transform:translate(4px,2px);} }
+
+  /* 演出レイヤー */
+  .fx-layer{ position:absolute; inset:0; pointer-events:none; overflow:visible; z-index:5; }
+  .banner{ position:absolute; left:50%; top:42%; transform:translate(-50%,-50%);
+    font-weight:900; font-size:34px; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.7);
+    animation:banner 1.4s ease forwards; white-space:nowrap; }
+  .banner.combo{ color:#7CFC98; font-size:40px; }
+  .banner.corner{ color:var(--gold); }
+  .banner.reversal{ color:var(--accent); font-size:44px; }
+  .banner.win{ color:var(--gold); font-size:48px; }
+  .banner.lose{ color:#ff8a8a; }
+  .banner.small{ font-size:24px; color:var(--muted); }
+  @keyframes banner{ 0%{opacity:0; transform:translate(-50%,-50%) scale(.5);} 20%{opacity:1; transform:translate(-50%,-50%) scale(1.1);} 75%{opacity:1; transform:translate(-50%,-60%) scale(1);} 100%{opacity:0; transform:translate(-50%,-80%) scale(1);} }
+  .particle{ position:absolute; width:9px; height:9px; border-radius:50%; pointer-events:none;
+    animation:particle .7s ease-out forwards; }
+  @keyframes particle{ to{ transform:translate(var(--dx),var(--dy)) scale(.2); opacity:0; } }
+  .flash{ position:absolute; inset:0; animation:flash .35s ease-out forwards; }
+  @keyframes flash{ from{opacity:.6;} to{opacity:0;} }
+
+  .controls{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  .controls button{ background:var(--panel2); color:var(--text); font-weight:700; padding:11px 16px; font-size:14px; }
+  .sound-row{ display:flex; gap:16px; font-size:13px; color:var(--muted); }
+
+  /* 結果オーバーレイ */
+  .overlay{ position:fixed; inset:0; background:rgba(5,10,20,.82); display:none; align-items:center; justify-content:center; z-index:20; padding:20px; }
+  .overlay.active{ display:flex; }
+  .result-card{ background:var(--panel); border-radius:18px; padding:26px; width:100%; max-width:360px; text-align:center; }
+  .result-card .big{ font-size:30px; font-weight:900; margin-bottom:6px; }
+  .result-card .score{ font-size:18px; color:var(--muted); margin-bottom:20px; }
+
+  /* 戦績 */
+  .stat-block{ background:var(--panel2); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .stat-block h3{ margin:0 0 8px; font-size:15px; }
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center; }
+  .stat-grid .k{ font-size:11px; color:var(--muted); }
+  .stat-grid .v{ font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .prof-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .prof-row input{ flex:1; }
+  .empty-note{ color:var(--muted); font-size:13px; text-align:center; padding:10px; }
+</style>
+</head>
+<body>
+
+  <!-- メニュー -->
+  <section id="screen-menu" class="screen active">
+    <h1 class="logo">リバーシ</h1>
+    <div class="subtitle">2人で対戦・CPU対戦・記録と戦績</div>
+    <div class="menu-list">
+      <button class="btn-primary" data-mode="2p">2人で対戦</button>
+      <button class="btn-primary" data-mode="cpu">CPUと対戦</button>
+      <button class="btn-sub" id="go-stats">戦績</button>
+      <button class="btn-sub" id="go-profiles">プロフィール</button>
+    </div>
+  </section>
+
+  <!-- 対局セットアップ -->
+  <section id="screen-setup" class="screen">
+    <h2 id="setup-title" style="margin:4px">対局の設定</h2>
+    <div class="card">
+      <div class="field" id="field-black">
+        <label>黒（先攻）<span class="disc-mini black" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span></label>
+        <div class="seg" id="seg-black"></div>
+      </div>
+      <div class="field" id="field-white">
+        <label>白（後攻）<span class="disc-mini white" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span></label>
+        <div class="seg" id="seg-white"></div>
+      </div>
+      <div class="field" id="field-main">
+        <label>主役（BGM・演出の基準。★で表示）</label>
+        <div class="seg" id="seg-main"></div>
+      </div>
+      <div class="field" id="field-level" style="display:none">
+        <label>CPUの強さ</label>
+        <div class="seg" id="seg-level">
+          <button data-level="1">かんたん</button>
+          <button data-level="2" class="sel">ふつう</button>
+          <button data-level="3">つよい</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="opt-hints" checked> 合法手のヒントを表示</label>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-sub" data-back="menu">戻る</button>
+      <button class="btn-primary" id="start-game">対局開始</button>
+    </div>
+  </section>
+
+  <!-- 対局 -->
+  <section id="screen-game" class="screen">
+    <div class="panel-player" id="panel-top"></div>
+    <div id="message">　</div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="fx-layer" id="fx-layer"></div>
+    </div>
+    <div class="panel-player" id="panel-bottom"></div>
+    <div class="controls">
+      <button id="btn-undo">待った</button>
+      <button id="btn-restart">最初から</button>
+      <button id="btn-quit">メニュー</button>
+    </div>
+    <div class="sound-row">
+      <label class="toggle"><input type="checkbox" id="snd-bgm" checked> BGM</label>
+      <label class="toggle"><input type="checkbox" id="snd-sfx" checked> 効果音</label>
+    </div>
+  </section>
+
+  <!-- 戦績 -->
+  <section id="screen-stats" class="screen">
+    <h2 style="margin:4px">戦績</h2>
+    <div id="stats-body" style="width:100%"></div>
+    <div class="btn-row">
+      <button class="btn-sub" id="export-csv">CSV書き出し</button>
+      <button class="btn-sub" id="export-json">JSON書き出し</button>
+    </div>
+    <button class="btn-sub" data-back="menu">メニューに戻る</button>
+  </section>
+
+  <!-- プロフィール -->
+  <section id="screen-profiles" class="screen">
+    <h2 style="margin:4px">プロフィール（最大2人）</h2>
+    <div class="card" id="profiles-body"></div>
+    <button class="btn-sub" data-back="menu">メニューに戻る</button>
+  </section>
+
+  <!-- 結果 -->
+  <div class="overlay" id="overlay-result">
+    <div class="result-card">
+      <div class="big" id="result-text">　</div>
+      <div class="score" id="result-score">　</div>
+      <div class="btn-row" style="flex-direction:column">
+        <button class="btn-primary" id="rematch">もう一回</button>
+        <button class="btn-sub" id="to-menu">メニューに戻る</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+    }
+  </script>
+</body>
+</html>

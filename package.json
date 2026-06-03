@@ -1,0 +1,10 @@
+{
+  "name": "reversi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "リバーシ PWA（2人対戦/CPU・記録・戦績）",
+  "scripts": {
+    "test": "node --test"
+  }
+}
