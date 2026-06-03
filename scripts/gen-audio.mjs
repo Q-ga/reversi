@@ -35,6 +35,12 @@ function lowpass(buf, cutoff, sr) {
   for (let i = 0; i < buf.length; i++) { y += a * (buf[i] - y); buf[i] = y; }
   return buf;
 }
+// ピーク基準でレベルを揃える（小さすぎ/大きすぎを防ぐ）
+function normalize(buf, target = 0.9) {
+  let pk = 0; for (const v of buf) pk = Math.max(pk, Math.abs(v));
+  if (pk > 0) { const g = target / pk; for (let i = 0; i < buf.length; i++) buf[i] *= g; }
+  return buf;
+}
 // ループのつなぎ目を消す（末尾fadeを先頭にクロスフェード）
 function seamless(buf, sr, fadeSec = 0.18) {
   const f = Math.min((sr * fadeSec) | 0, (buf.length / 2) | 0);
@@ -68,23 +74,26 @@ function blank(sec, sr) { return new Float32Array((sec * sr) | 0); }
 // ===================== 効果音（44.1kHz） =====================
 const SR = 44100;
 
-// 着石：木の打音（フィルタ済みノイズの短いトランジェント＋低い共鳴）
+// 着石：木に石が当たる「コッ」。スマホで鳴るよう中高域の打撃を中心に＋短い低音ボディ。
 {
-  const b = blank(0.16, SR);
-  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.6 * Math.exp(-t / 0.012); }
-  lowpass(b, 2600, SR);
-  tone(b, SR, { type: "sine", freq: 190, t0: 0, dur: 0.16, gain: 0.5, decay: 0.05 });
-  tone(b, SR, { type: "sine", freq: 320, t0: 0, dur: 0.10, gain: 0.25, decay: 0.03 });
-  console.log("✔", writeWav("place.wav", b, SR));
+  const b = blank(0.18, SR);
+  // 明るいトランジェント（中高域）＝小型スピーカーでも抜ける
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.8 * Math.exp(-t / 0.005); }
+  lowpass(b, 7000, SR);
+  tone(b, SR, { type: "sine", freq: 950, t0: 0, dur: 0.05, gain: 0.6, decay: 0.018 }); // カチッ
+  tone(b, SR, { type: "sine", freq: 520, t0: 0, dur: 0.08, gain: 0.45, decay: 0.03 }); // 木質
+  tone(b, SR, { type: "sine", freq: 230, t0: 0, dur: 0.12, gain: 0.35, decay: 0.05 }); // ボディ
+  console.log("✔", writeWav("place.wav", normalize(b, 0.97), SR));
 }
 
-// 返し：短いクリック（エンジン側でplaybackRateを上げて音程上昇＝滝の連鎖）
+// 返し：澄んだ木質プラック（中域・短い）。エンジンがplaybackRateを上げて音程上昇＝滝。
 {
-  const b = blank(0.10, SR);
-  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.4 * Math.exp(-t / 0.008); }
-  lowpass(b, 4000, SR);
-  tone(b, SR, { type: "tri", freq: 520, t0: 0, dur: 0.09, gain: 0.4, decay: 0.04 });
-  console.log("✔", writeWav("flip.wav", b, SR));
+  const b = blank(0.16, SR);
+  tone(b, SR, { type: "sine", freq: 680, t0: 0, dur: 0.14, gain: 0.6, attack: 0.001, decay: 0.045 });
+  tone(b, SR, { type: "sine", freq: 1360, t0: 0, dur: 0.06, gain: 0.12, decay: 0.02 }); // ほのかな倍音
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.12 * Math.exp(-t / 0.004); } // 立ち上がりの粒
+  lowpass(b, 5200, SR);
+  console.log("✔", writeWav("flip.wav", normalize(b, 0.85), SR));
 }
 
 // 角取り：澄んだベル（倍音＋長めの減衰）
@@ -140,8 +149,9 @@ const BR = 32000;
       b[i] += Math.sin(TAU * f * 2 * (i / BR)) * 0.015 * env; // 薄い倍音
     }
   }));
-  lowpass(b, 1400, BR);
-  console.log("✔", writeWav("bgm_normal.wav", seamless(b, BR), BR));
+  lowpass(b, 1500, BR);
+  // 通常は穏やか＝控えめレベル（終盤との差を出す）
+  console.log("✔", writeWav("bgm_normal.wav", normalize(seamless(b, BR), 0.55), BR));
 }
 
 // 終盤・接戦：白熱した緊迫感（解決しない持続音＋不協＋刻みパルス）
@@ -154,12 +164,14 @@ const BR = 32000;
       b[i] += Math.sin(TAU * f * t) * 0.05 * swell;
     }
   });
-  // 不規則めの刻み（心拍/緊張）
+  // 心拍のような低い刻み（緊張）＋中域の刻みで“動き”をはっきり
   for (let beat = 0; beat * 0.5 < L; beat++) {
-    tone(b, BR, { type: "tri", freq: 880, t0: beat * 0.5, dur: 0.08, gain: 0.06, decay: 0.04 });
+    tone(b, BR, { type: "sine", freq: 70, t0: beat * 0.5, dur: 0.12, gain: 0.5, decay: 0.06 });        // ドッ…ドッ
+    tone(b, BR, { type: "tri", freq: 740, t0: beat * 0.5 + 0.25, dur: 0.06, gain: 0.12, decay: 0.03 }); // 裏拍の刻み
   }
-  lowpass(b, 2200, BR);
-  console.log("✔", writeWav("bgm_close.wav", seamless(b, BR), BR));
+  lowpass(b, 2600, BR);
+  // 通常より明確に大きく＝切替が分かる
+  console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.8), BR));
 }
 
 // 終盤・一方的：壮大で力強い行進曲（インペリアルマーチ参照：G minor・~100BPM・低音ブラス様＋ティンパニ）
@@ -174,8 +186,10 @@ const BR = 32000;
   let tcur = 0;
   for (let rep = 0; rep < 2; rep++) {
     for (const [f, beats] of motif) {
-      tone(b, BR, { type: "saw", freq: f / 2, t0: tcur, dur: beats * beat * 0.95, gain: 0.16, vib: 4, decay: beats * beat });
-      tone(b, BR, { type: "saw", freq: f, t0: tcur, dur: beats * beat * 0.9, gain: 0.05, vib: 4, decay: beats * beat * 0.6 });
+      // 中域ブラスを主役に（スマホで迫力が出る）＋オクターブ下で厚み＋上で輝き
+      tone(b, BR, { type: "saw", freq: f, t0: tcur, dur: beats * beat * 0.92, gain: 0.16, vib: 4.5, decay: beats * beat * 0.8 });
+      tone(b, BR, { type: "saw", freq: f / 2, t0: tcur, dur: beats * beat * 0.95, gain: 0.12, vib: 4.5, decay: beats * beat });
+      tone(b, BR, { type: "square", freq: f * 2, t0: tcur, dur: beats * beat * 0.5, gain: 0.03, decay: beats * beat * 0.4 });
       tcur += beats * beat;
     }
   }
@@ -190,8 +204,9 @@ const BR = 32000;
       b[s0 + j] += noise() * 0.05 * Math.exp(-t / 0.02);
     }
   }
-  lowpass(b, 2600, BR);
-  console.log("✔", writeWav("bgm_oneside.wav", seamless(b, BR), BR));
+  lowpass(b, 3200, BR);
+  // 最も力強く＝一番大きい（圧倒感）
+  console.log("✔", writeWav("bgm_oneside.wav", normalize(seamless(b, BR), 0.92), BR));
 }
 
 console.log("→ 出力先:", OUT);

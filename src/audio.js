@@ -36,7 +36,7 @@ export function init() {
   const AC = window.AudioContext || window.webkitAudioContext;
   ctx = new AC();
   sfxGain = ctx.createGain(); sfxGain.gain.value = 0.9; sfxGain.connect(ctx.destination);
-  bgmGain = ctx.createGain(); bgmGain.gain.value = bgmOn ? 0.5 : 0; bgmGain.connect(ctx.destination);
+  bgmGain = ctx.createGain(); bgmGain.gain.value = bgmOn ? 0.7 : 0; bgmGain.connect(ctx.destination);
   // 先読み済みをdecode（slice：decodeはArrayBufferを消費するため複製）
   for (const [k, ab] of Object.entries(rawBuffers)) {
     ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[k] = buf; }).catch(() => {});
@@ -46,7 +46,7 @@ export function init() {
 export function setSfxEnabled(on) { sfxOn = on; }
 export function setBgmEnabled(on) {
   bgmOn = on;
-  if (bgmGain && ctx) bgmGain.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.05);
+  if (bgmGain && ctx) bgmGain.gain.setTargetAtTime(on ? 0.7 : 0, ctx.currentTime, 0.05);
 }
 export function isSfxEnabled() { return sfxOn; }
 export function isBgmEnabled() { return bgmOn; }
