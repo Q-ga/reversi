@@ -111,14 +111,14 @@ const SR = 44100;
   console.log("✔", writeWav("flip_lift.wav", normalize(b, 0.5), SR));
 }
 
-// 返し(2)：コツっと置く音（軽い木のタップ。着地で鳴らす）
+// 返し(2)：コッと置く重厚な木のタップ（低め）。連鎖でこれが「ココここコツ」と連打される。
 {
-  const b = blank(0.10, SR);
-  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.5 * Math.exp(-t / 0.005); }
-  lowpass(b, 6500, SR);
-  tone(b, SR, { type: "sine", freq: 720, t0: 0, dur: 0.05, gain: 0.4, decay: 0.02 });
-  tone(b, SR, { type: "sine", freq: 380, t0: 0, dur: 0.07, gain: 0.25, decay: 0.03 });
-  console.log("✔", writeWav("flip_land.wav", normalize(b, 0.7), SR));
+  const b = blank(0.13, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.4 * Math.exp(-t / 0.006); }
+  lowpass(b, 3800, SR);
+  tone(b, SR, { type: "sine", freq: 300, t0: 0, dur: 0.09, gain: 0.55, decay: 0.04 });  // 低い芯
+  tone(b, SR, { type: "sine", freq: 165, t0: 0, dur: 0.11, gain: 0.4, decay: 0.06 });   // 重厚なボディ
+  console.log("✔", writeWav("flip_land.wav", normalize(b, 0.85), SR));
 }
 
 // 角取り：剣を抜くような「シャキーン」（長めの上昇金属スウィング＋金属リング＋残響）。音量控えめ。

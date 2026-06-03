@@ -179,3 +179,9 @@ BGMを2段階に簡素化：
 
 DSP合成方針（R3）：低音ブラス様（鋸波＋ローパス）でG minorのモチーフ、拍頭にティンパニ様の低打撃、行進テンポ、徐々に厚みを増して荘厳に。接戦版は不協・刻みの緊張、解決しない持続音で“白熱”を出す。
 出典：https://filmmusicnotes.com/john-williams-themes-part-3-of-6-the-imperial-march-darth-vaders-theme/ ・ https://classicalexburns.com/2021/06/03/john-williams-the-imperial-march/
+
+## 2026-06-03 BGM改訂3＋効果音調整
+- 終盤BGMの「接戦/一方的」分岐を廃止（切替が頻繁でだるい）。BGMは normal / endgame の2状態のみ。endgame=緊迫感(bgm_close)。bgm_oneside.wavは未使用（ファイルは残置）
+- bgm.js: bgmState→normal/endgameに簡素化（ONESIDE_MARGIN廃止）
+- 効果音：コツ(flip_land)を低く重厚化(300/165Hz)。連鎖は「スッ(手ごと1回)＋コッ連打(即時・音程上昇)＝ココここコツ」に。角は剣のシャキーン(採用済)
+- SW無効化(localhost)で旧キャッシュ問題を解消済。音更新時はAUDIO_VERを上げる(現6)
