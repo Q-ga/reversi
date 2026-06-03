@@ -26,9 +26,11 @@ const bgmTracks = {};  // state -> { src, gain }
 let currentBgm = null;
 let bgmRunning = false;
 
+// 音源を更新したらここを上げる（Service Worker等の旧キャッシュを確実に回避）
+const AUDIO_VER = 4;
 // モジュール読込時にファイルを先読み（decodeはinit後）
 for (const [k, url] of Object.entries({ ...SFX_FILES, ...BGM_FILES })) {
-  fetch(url).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
+  fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
 }
 
 export function init() {
