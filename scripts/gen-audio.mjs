@@ -41,6 +41,19 @@ function normalize(buf, target = 0.9) {
   if (pk > 0) { const g = target / pk; for (let i = 0; i < buf.length; i++) buf[i] *= g; }
   return buf;
 }
+// 簡易リバーブ（並列コムフィルタ）。残響感を付与する。
+function reverb(dry, sr, { decay = 2.2, mix = 0.5 } = {}) {
+  const N = dry.length, wet = new Float32Array(N);
+  for (const Draw of [1116, 1188, 1277, 1356]) {
+    const D = Math.round((Draw * sr) / 44100);
+    const g = Math.pow(10, (-3 * (D / sr)) / decay);
+    const cb = new Float32Array(N);
+    for (let i = 0; i < N; i++) { cb[i] = dry[i] + (i >= D ? g * cb[i - D] : 0); wet[i] += cb[i]; }
+  }
+  const out = new Float32Array(N);
+  for (let i = 0; i < N; i++) out[i] = dry[i] * (1 - mix) + (wet[i] / 4) * mix;
+  return out;
+}
 // ループのつなぎ目を消す（末尾fadeを先頭にクロスフェード）
 function seamless(buf, sr, fadeSec = 0.18) {
   const f = Math.min((sr * fadeSec) | 0, (buf.length / 2) | 0);
@@ -86,23 +99,23 @@ const SR = 44100;
   console.log("✔", writeWav("place.wav", normalize(b, 0.97), SR));
 }
 
-// 返し：澄んだ木質プラック（中域・短い）。エンジンがplaybackRateを上げて音程上昇＝滝。
+// 返し：短いクリック（前バージョンの感触に戻す）。playbackRateを上げて音程上昇＝滝の連鎖。
 {
-  const b = blank(0.16, SR);
-  tone(b, SR, { type: "sine", freq: 680, t0: 0, dur: 0.14, gain: 0.6, attack: 0.001, decay: 0.045 });
-  tone(b, SR, { type: "sine", freq: 1360, t0: 0, dur: 0.06, gain: 0.12, decay: 0.02 }); // ほのかな倍音
-  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.12 * Math.exp(-t / 0.004); } // 立ち上がりの粒
-  lowpass(b, 5200, SR);
-  console.log("✔", writeWav("flip.wav", normalize(b, 0.85), SR));
+  const b = blank(0.10, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.4 * Math.exp(-t / 0.008); }
+  lowpass(b, 4000, SR);
+  tone(b, SR, { type: "tri", freq: 520, t0: 0, dur: 0.09, gain: 0.4, decay: 0.04 });
+  console.log("✔", writeWav("flip.wav", b, SR));
 }
 
-// 角取り：澄んだベル（倍音＋長めの減衰）
+// 角取り：澄んだベル＋たっぷりの残響（リバーブ）
 {
-  const b = blank(1.3, SR);
+  const b = blank(2.8, SR);
   const base = 660;
   [[1, 0.5], [2.0, 0.3], [3.01, 0.18], [4.2, 0.12], [5.4, 0.08]].forEach(([m, g]) =>
-    tone(b, SR, { type: "sine", freq: base * m, t0: 0, dur: 1.3, gain: g, attack: 0.002, decay: 0.55 }));
-  console.log("✔", writeWav("bell.wav", b, SR));
+    tone(b, SR, { type: "sine", freq: base * m, t0: 0, dur: 1.4, gain: g, attack: 0.002, decay: 0.55 }));
+  const wet = reverb(b, SR, { decay: 2.6, mix: 0.6 });
+  console.log("✔", writeWav("bell.wav", normalize(wet, 0.92), SR));
 }
 
 // 逆転：駆け上がるスイープ
@@ -174,39 +187,35 @@ const BR = 32000;
   console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.8), BR));
 }
 
-// 終盤・一方的：壮大で力強い行進曲（インペリアルマーチ参照：G minor・~100BPM・低音ブラス様＋ティンパニ）
+// 終盤・一方的：重低音の圧迫感（行進曲ではない）。深いドローン＋ゆっくり迫る重い脈動＋不穏なうねり。
 {
-  const bpm = 100, beat = 60 / bpm, L = beat * 16, b = blank(L, BR);
-  const G4 = 392, Eb4 = semis(392, -4), Bb4 = semis(392, 3), G3 = 196, D3 = semis(196, 7);
-  // 主旋律モチーフ（G G G | Eb Bb G）を低音ブラス様(saw+lowpass)で2回
-  const motif = [
-    [G4, 1], [G4, 1], [G4, 1], [Eb4, 0.75], [Bb4, 0.25], [G4, 1],
-    [Eb4, 0.75], [Bb4, 0.25], [G4, 2],
-  ];
-  let tcur = 0;
-  for (let rep = 0; rep < 2; rep++) {
-    for (const [f, beats] of motif) {
-      // 中域ブラスを主役に（スマホで迫力が出る）＋オクターブ下で厚み＋上で輝き
-      tone(b, BR, { type: "saw", freq: f, t0: tcur, dur: beats * beat * 0.92, gain: 0.16, vib: 4.5, decay: beats * beat * 0.8 });
-      tone(b, BR, { type: "saw", freq: f / 2, t0: tcur, dur: beats * beat * 0.95, gain: 0.12, vib: 4.5, decay: beats * beat });
-      tone(b, BR, { type: "square", freq: f * 2, t0: tcur, dur: beats * beat * 0.5, gain: 0.03, decay: beats * beat * 0.4 });
-      tcur += beats * beat;
+  const L = 9.6, b = blank(L, BR);
+  // 重低音ドローン（Gのパワー：G1=49, D2=73.4）＝地鳴りのような土台
+  for (let i = 0; i < b.length; i++) {
+    const t = i / BR;
+    const trem = 0.85 + 0.15 * Math.sin(TAU * 0.18 * t);
+    b[i] += Math.sin(TAU * 49 * t) * 0.55 * trem;     // sub
+    b[i] += Math.sin(TAU * 73.4 * t) * 0.30 * trem;   // 5th
+    b[i] += (2 * ((49 * t) % 1) - 1) * 0.10 * trem;   // sawで倍音の厚み
+  }
+  // 不穏なうねり：低ブラス様G2=98に半音上Ab2=104を僅かに重ねて軋ませる（menace）。ゆっくりswell
+  for (const [f, g] of [[98, 0.16], [104, 0.06]]) {
+    for (let i = 0; i < b.length; i++) {
+      const t = i / BR, swell = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(TAU * (t / L))); // 山なりに高まる
+      b[i] += (2 * ((f * t) % 1) - 1) * g * swell;
     }
   }
-  // ベース・ペダル（G）と各拍のティンパニ様の低打撃で行進感
-  for (let i = 0; i < (L / beat) | 0; i++) {
-    tone(b, BR, { type: "sine", freq: i % 4 === 2 ? D3 : G3, t0: i * beat, dur: beat * 0.9, gain: 0.18, decay: beat * 0.5 });
-    // ティンパニ：低いsine＋ピッチ落ち＋ノイズ
-    const s0 = (i * beat * BR) | 0;
-    for (let j = 0; j < (0.18 * BR) | 0 && s0 + j < b.length; j++) {
+  // ゆっくり迫る重い脈動（1.6秒ごとのDOOM）：ピッチが沈むsine＋短いブラスの圧
+  for (let k = 0; k * 1.6 < L; k++) {
+    const t0 = k * 1.6, s0 = (t0 * BR) | 0;
+    for (let j = 0; j < (0.5 * BR) | 0 && s0 + j < b.length; j++) {
       const t = j / BR;
-      b[s0 + j] += Math.sin(TAU * (110 - 50 * (t / 0.18)) * t) * 0.22 * Math.exp(-t / 0.09);
-      b[s0 + j] += noise() * 0.05 * Math.exp(-t / 0.02);
+      b[s0 + j] += Math.sin(TAU * (70 - 35 * (t / 0.5)) * t) * 0.5 * Math.exp(-t / 0.28); // 沈むDOOM
     }
+    tone(b, BR, { type: "saw", freq: 98, t0, dur: 0.6, gain: 0.18, decay: 0.4 }); // 圧のスタブ
   }
-  lowpass(b, 3200, BR);
-  // 最も力強く＝一番大きい（圧倒感）
-  console.log("✔", writeWav("bgm_oneside.wav", normalize(seamless(b, BR), 0.92), BR));
+  lowpass(b, 1500, BR); // 高域を削って重く暗く
+  console.log("✔", writeWav("bgm_oneside.wav", normalize(seamless(b, BR), 0.95), BR));
 }
 
 console.log("→ 出力先:", OUT);

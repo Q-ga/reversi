@@ -2,8 +2,8 @@
 // 2段階：通常（前半＋中盤）/ 終盤（接戦 or 一方的）。
 import { EMPTY, BLACK, WHITE, count } from "./rules.js";
 
-// 空きマスがこの数以下になったら「終盤」
-export const ENDGAME_EMPTIES = 16;
+// 空きマスがこの数以下になったら「終盤」（残り約10手）
+export const ENDGAME_EMPTIES = 10;
 // 終盤での石差がこの値以上なら「一方的」、未満なら「接戦」
 export const ONESIDE_MARGIN = 12;
 
