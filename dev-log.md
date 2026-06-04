@@ -253,3 +253,12 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 
 ### 実装の進め方（次の一手）
 - 垂直スライスとしてR4.5を4本（①②③④）で実装 → 各々を実機検証 → R5（UIリデザイン）→ R6（PWA/旧2D削除）
+
+### 実装＆検証（2026-06-04）
+- ①②④を render3d.js（placeWithAnticipation / flipLead / flipStone高浮上 / jitterStone / animateMove刷新）、音を audio.js（playAppear/playPlace/playFlipLift/playFlipLand）、配線を main.js（doMoveをコールバック方式へ）で実装。③は audio.js setBgm を等パワー(cos/sin)・実時間3秒の setValueCurveAtTime に変更
+- 検証：scripts/verify-cdp.mjs（Node25のグローバルWebSocketで自作CDP・Chrome headless・WebGL・?slow=4で window.__view を直叩き）
+  - ① arcY=出現で空中静止(約900msプラトー)→落下→小バウンド→restY着地。appeared/landed=true
+  - ② liftCount=1（スッ1回）/ landCount=先頭石ぶん（コツ）
+  - ④ cornerHit=true、置石xが±0.022→±0.006へ振動収束（二重指数の減衰）
+  - console errors なし。node --test 40件green（純ロジック回帰なし）
+- 残：実機での「実音」確認（特に③BGM終盤移行・①出現フッの音量）と、めくり上昇UP・溜め時間の体感微調整はユーザー実機フィードバック待ち

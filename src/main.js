@@ -199,9 +199,19 @@ async function doMove(r, c) {
   const color = state.current;
   const flippedCount = count(next.board, color) - count(state.board, color) - 1;
   match.moves.push({ r, c });
-  audio.playPlace();
 
-  await view.animateMove(state.board, next.board, { r, c }, color, (i) => audio.playFlip(i));
+  // ① 着手の溜め／② めくりの号砲／④ 角ヒットストップは、すべてアニメ側の
+  // タイミングに音・光を同期させる（コールバックで発火）。
+  const isCorner = (r === 0 || r === 7) && (c === 0 || c === 7);
+  await view.animateMove(state.board, next.board, { r, c }, color, {
+    onAppear: () => audio.playAppear(),              // 出現（フッ・極小）
+    onLand: () => audio.playPlace(),                 // 着地（コツ・主役）
+    onFlipLift: () => audio.playFlipLift(),          // 号砲の持ち上げ（スッ）
+    onFlipLand: (i) => audio.playFlipLand(i),        // 各めくりの着地（コツ・連鎖で上昇）
+    onCornerHit: isCorner
+      ? () => { audio.playEvent("corner"); view.applyEffects(["corner"], { r, c }); } // ④ 光と音を着地に同期
+      : null,
+  });
 
   const prev = state;
   state = next;
@@ -209,12 +219,12 @@ async function doMove(r, c) {
   // パスが起きていたら棋譜にも記録
   if (state.passed) match.moves.push({ pass: true });
 
-  // 局面に応じてBGM切替（2段階：通常/終盤接戦/終盤一方的）
+  // 局面に応じてBGM切替（2段階：通常/終盤）
   audio.setBgm(bgmState(state.board));
-  // スポット演出はR4でシーン内に実装。判定だけ算出しておく。
+  // スポット演出。角(corner)はアニメ中に発火済みなので除外し、残りをここで発火。
   const tags = detectEvents(prev, state, { r, c }, flippedCount);
-  for (const tag of tags) audio.playEvent(tag); // 演出音（効果音チャンネル）
-  view.applyEffects(tags, { r, c, flippedCount, color }); // 演出ビジュアル（シーン内bloom）
+  for (const tag of tags) { if (tag === "corner") continue; audio.playEvent(tag); }
+  view.applyEffects(tags.filter((t) => t !== "corner"), { r, c, flippedCount, color });
 
   view.renderHints(state, match.hints);
   renderPanels();

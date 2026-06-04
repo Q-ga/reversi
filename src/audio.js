@@ -64,13 +64,14 @@ function playBuffer(name, { rate = 1, gain = 1 } = {}) {
 }
 
 // ---- 効果音 ----
-export function playPlace() { playBuffer("place", { gain: 0.9 }); }
-// 連鎖めくり：その手の最初に「スッ」と持ち上げ音を1回、各めくりで「コッ」を即時に連打＝
-// 「スッ、ココここコツ」。indexが進むほど音程上昇＝滝の連鎖。
-export function playFlip(i = 0) {
+// ① 着手の溜め：出現の瞬間に「フッ」（極小・flip_lit流用）、着地の瞬間に「コツ」（主役・やや大きめ）
+export function playAppear() { playBuffer("flip_lift", { gain: 0.12 }); }
+export function playPlace() { playBuffer("place", { gain: 1.0 }); }
+// ② めくり：号砲の持ち上げで「スッ」を1回、各めくりの着地で「コツ」（連鎖で音程上昇）
+export function playFlipLift() { playBuffer("flip_lift", { gain: 0.22 }); }
+export function playFlipLand(i = 0) {
   const rate = 1 + Math.min(i, 14) * 0.045;
-  if (i === 0) playBuffer("flip_lift", { gain: 0.22 }); // スッ（小さくスッキリ・手ごとに1回）
-  playBuffer("flip_land", { rate, gain: 0.9 });         // コッ（大きめ・連鎖で上昇）
+  playBuffer("flip_land", { rate, gain: 0.9 });
 }
 
 const EVENT_SOUND = {
@@ -103,25 +104,46 @@ export function startBgm(state = "normal") {
   setBgm(state, true);
 }
 
-// 局面に応じてBGMを切り替える（normal / endgame_close / endgame_oneside）
+// 等パワークロスフェード（③ 急な転換を約3秒で緩やかに）
+const XFADE_SEC = 3.0;     // クロスフェード時間（実時間）
+const BGM_LEVEL = 0.9;     // BGMの定常音量
+function eqPowerCurves(level, steps = 64) {
+  const out = new Float32Array(steps); // フェードアウト：level→0
+  const inn = new Float32Array(steps); // フェードイン ：0→level
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    out[i] = level * Math.cos((t * Math.PI) / 2);
+    inn[i] = level * Math.sin((t * Math.PI) / 2);
+  }
+  return { out, inn };
+}
+
+// 局面に応じてBGMを切り替える（normal / endgame）。等パワーで約3秒かけて溶け合わせる。
 export function setBgm(state, force = false) {
   if (!ctx || !bgmRunning) return;
   if (!force && state === currentBgm) return;
   // decodeがまだなら少し待って再試行
   if (!buffers[state]) { setTimeout(() => setBgm(state, force), 200); return; }
   const now = ctx.currentTime;
-  // 既存トラックをフェードアウト＆停止予約
+  const { out, inn } = eqPowerCurves(BGM_LEVEL);
+  // 既存トラックを等パワーでフェードアウト＆停止予約
   for (const [name, tr] of Object.entries(bgmTracks)) {
     if (name !== state) {
       tr.gain.gain.cancelScheduledValues(now);
-      tr.gain.gain.setTargetAtTime(0, now, 0.4);
-      try { tr.src.stop(now + 1.5); } catch {}
+      try { tr.gain.gain.setValueCurveAtTime(out, now, XFADE_SEC); } catch { tr.gain.gain.setTargetAtTime(0, now, 1.0); }
+      try { tr.src.stop(now + XFADE_SEC + 0.3); } catch {}
       delete bgmTracks[name];
     }
   }
   if (!bgmTracks[state]) bgmTracks[state] = startTrack(state);
   const tr = bgmTracks[state];
-  if (tr) { tr.gain.gain.cancelScheduledValues(now); tr.gain.gain.setTargetAtTime(0.9, now, 0.5); }
+  if (tr) {
+    tr.gain.gain.cancelScheduledValues(now);
+    try {
+      tr.gain.gain.setValueCurveAtTime(inn, now, XFADE_SEC);
+      tr.gain.gain.setValueAtTime(BGM_LEVEL, now + XFADE_SEC); // フェード後は定常音量を維持
+    } catch { tr.gain.gain.setTargetAtTime(BGM_LEVEL, now, 1.0); }
+  }
   currentBgm = state;
 }
 

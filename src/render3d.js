@@ -333,59 +333,168 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
   loop();
 
-  // 着手石を上から落として着地（ドロップイン）
-  const LIFT = STONE_R * 2.2; // 浮上の高さ（実例Marmelab=持ち上げて回転して着地）
+  // 浮上量・溜めの定数
+  const LIFT = STONE_R * 2.2;        // 着手ドロップインの基準高さ
+  const FLIP_LIFT = STONE_R * 3.2;   // ② めくりの浮上は全体的に高く
+  const HOVER = STONE_R * 2.4;       // ① 出現時の空中静止高さ
+  const HOLD_MS = 135;               // 溜め時間（着手・めくり号砲の目安）
 
-  function dropIn(group) {
+  // ① 着手の溜め：盤の真上に出現(フッ)→空中で静止(溜め)→落下＋着地(コツ)。
+  function placeWithAnticipation(group, color, { onAppear, onLand } = {}) {
     const restY = STONE_H / 2;
-    const fromY = restY + LIFT * 1.6;
-    addTween(380 * SPEED, (p) => {
-      const e = easeOutBack(p);
-      group.position.y = fromY + (restY - fromY) * e;
-      const s = 0.55 + 0.45 * easeOutCubic(p);
-      group.scale.setScalar(s);
-    }, () => { group.position.y = restY; group.scale.setScalar(1); });
+    const hoverY = restY + HOVER;
+    group.rotation.z = colorToFlip(color); // 置く色の面を上に
+    group.position.y = hoverY;
+    group.scale.setScalar(0.6);
+    const APPEAR = 90 * SPEED, HOLD = HOLD_MS * SPEED, DROP = 220 * SPEED;
+    const total = APPEAR + HOLD + DROP;
+    let landed = false;
+    if (onAppear) onAppear();
+    addTween(total, (p) => {
+      const t = p * total;
+      if (t <= APPEAR) {                         // 出現（フッと現れる）
+        group.scale.setScalar(0.6 + 0.4 * easeOutCubic(t / APPEAR));
+        group.position.y = hoverY;
+      } else if (t <= APPEAR + HOLD) {            // 溜め（空中静止）
+        group.scale.setScalar(1);
+        group.position.y = hoverY;
+      } else {                                    // 落下＋着地
+        const dp = (t - APPEAR - HOLD) / DROP;
+        if (dp < 0.7) {
+          group.position.y = hoverY + (restY - hoverY) * easeOutCubic(dp / 0.7);
+        } else {
+          const bp = (dp - 0.7) / 0.3;            // 着地の小バウンド
+          group.position.y = restY + Math.sin(bp * Math.PI) * STONE_H * 0.6;
+          if (!landed) { landed = true; if (onLand) onLand(); }
+        }
+      }
+    }, () => { group.position.y = restY; group.scale.setScalar(1); if (!landed && onLand) onLand(); });
   }
 
-  // 1枚を裏返す：盤から浮き上がりながらX軸180°回転し着地（90°で黒白半々の断面）。
+  // フォロワー（2枚目以降）の裏返し：浮上しながらZ軸180°回転して着地。浮上は高め。
   function flipStone(entry, toColor, dur = 480) {
     const from = entry.group.rotation.z;
     const to = colorToFlip(toColor);
     entry.color = toColor;
     const restY = STONE_H / 2;
     addTween(dur * SPEED, (p) => {
-      // 回転は等速感のあるeaseInOutCubic→90°(黒白半々)がちょうど中間に来る。Z軸=左からめくる
-      entry.group.rotation.z = from + (to - from) * easeInOutCubic(p);
-      // 浮上は中間(=edge-on)で最高、最後に軽くバウンドして着地
-      const hop = Math.sin(Math.min(p, 1) * Math.PI) * LIFT;
+      entry.group.rotation.z = from + (to - from) * easeInOutCubic(p); // 90°で黒白半々
+      const hop = Math.sin(Math.min(p, 1) * Math.PI) * FLIP_LIFT;      // 中間で最高
       const bounce = p > 0.82 ? Math.sin((p - 0.82) / 0.18 * Math.PI) * STONE_H * 0.5 : 0;
       entry.group.position.y = restY + hop + bounce;
     }, () => { entry.group.rotation.z = to; entry.group.position.y = restY; });
   }
 
-  // 重なる波の連鎖めくり。置石から距離順に、前の石が回り切る前に次を開始（実例stagger≒50ms）。
-  function animateMove(prevBoard, nextBoard, move, color, onFlip, stepMs = 95) {
-    return new Promise((resolve) => {
-      const placed = placeStone(move.r, move.c, color, true);
-      dropIn(placed.group);
-
-      const flips = [];
-      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-        if (prevBoard[r][c] !== EMPTY && prevBoard[r][c] !== nextBoard[r][c]) {
-          flips.push({ r, c, dist: Math.max(Math.abs(r - move.r), Math.abs(c - move.c)) });
-        }
+  // ② 先頭石（号砲）：回転せず水平に浮く→溜め→180°回転して着地。
+  function flipLead(entry, toColor, onLanded) {
+    const from = entry.group.rotation.z;
+    const to = colorToFlip(toColor);
+    entry.color = toColor;
+    const restY = STONE_H / 2;
+    const LIFT_MS = 150 * SPEED, HOLD = HOLD_MS * SPEED, ROT_MS = 360 * SPEED;
+    const total = LIFT_MS + HOLD + ROT_MS;
+    addTween(total, (p) => {
+      const t = p * total;
+      if (t <= LIFT_MS) {                          // 水平に浮く（回転しない）
+        entry.group.position.y = restY + FLIP_LIFT * easeOutCubic(t / LIFT_MS);
+        entry.group.rotation.z = from;
+      } else if (t <= LIFT_MS + HOLD) {            // 溜め
+        entry.group.position.y = restY + FLIP_LIFT;
+        entry.group.rotation.z = from;
+      } else {                                     // 回転しながら降下＋バウンド
+        const rp = (t - LIFT_MS - HOLD) / ROT_MS;
+        entry.group.rotation.z = from + (to - from) * easeInOutCubic(rp);
+        const drop = restY + FLIP_LIFT * (1 - easeInOutCubic(rp));
+        const bounce = rp > 0.82 ? Math.sin((rp - 0.82) / 0.18 * Math.PI) * STONE_H * 0.5 : 0;
+        entry.group.position.y = drop + bounce;
       }
-      flips.sort((a, b) => a.dist - b.dist);
-      if (flips.length === 0) { setTimeout(resolve, 360); return; }
+    }, () => { entry.group.rotation.z = to; entry.group.position.y = restY; if (onLanded) onLanded(); });
+  }
 
-      flips.forEach((f, i) => {
-        setTimeout(() => {
-          const entry = stoneMap.get(`${f.r},${f.c}`);
-          if (entry) flipStone(entry, nextBoard[f.r][f.c]);
-          onFlip(i);
-          if (i === flips.length - 1) setTimeout(resolve, 500 * SPEED);
-        }, i * stepMs * SPEED);
+  // ④ ヒットストップの揺れ：置石を盤面内で小刻みに振動（二重指数の減衰でメリハリ）。
+  function jitterStone(group) {
+    const restX = group.position.x, restZ = group.position.z;
+    const DUR = 300 * SPEED;
+    const A1 = STONE_R * 0.24, A2 = STONE_R * 0.06; // 第1相(大・速)＋第2相(小・遅)
+    addTween(DUR, (p) => {
+      const amp = A1 * Math.exp(-9 * p) + A2 * Math.exp(-2.2 * p);
+      const ph = p * Math.PI * 2 * 7;
+      group.position.x = restX + Math.sin(ph) * amp;
+      group.position.z = restZ + Math.cos(ph * 1.13) * amp;
+    }, () => { group.position.x = restX; group.position.z = restZ; });
+  }
+
+  // 連鎖めくり（① 着手の溜め → ④ 角ならヒットストップ → ② 号砲＋波状フォロワー）。
+  function animateMove(prevBoard, nextBoard, move, color, cbs = {}) {
+    const { onAppear, onLand, onFlipLift, onFlipLand, onCornerHit } = cbs;
+    return new Promise((resolve) => {
+      const placed = placeStone(move.r, move.c, color, false);
+
+      // ② 返る石を8方向ごとにグルーピング（各方向 距離順）
+      const dirs = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+      const groups = [];
+      for (const [dr, dc] of dirs) {
+        const line = [];
+        for (let k = 1; ; k++) {
+          const rr = move.r + dr * k, cc = move.c + dc * k;
+          if (rr < 0 || rr >= SIZE || cc < 0 || cc >= SIZE) break;
+          if (prevBoard[rr][cc] !== EMPTY && prevBoard[rr][cc] !== nextBoard[rr][cc]) line.push({ r: rr, c: cc });
+          else break;
+        }
+        if (line.length) groups.push(line);
+      }
+      const isCorner = (move.r === 0 || move.r === SIZE - 1) && (move.c === 0 || move.c === SIZE - 1);
+
+      placeWithAnticipation(placed.group, color, {
+        onAppear,
+        onLand: () => {
+          if (onLand) onLand();
+          if (isCorner) {                          // ④ ヒットストップ（光・音・揺れを一点に同期）
+            if (onCornerHit) onCornerHit();
+            jitterStone(placed.group);
+            shakeCamera(0.1, 260);
+            setTimeout(runFlips, 280 * SPEED);     // 停止が収まってからめくり開始
+          } else {
+            runFlips();
+          }
+        },
       });
+
+      function runFlips() {
+        if (groups.length === 0) { setTimeout(resolve, 320 * SPEED); return; }
+        let flipIdx = 0;
+        // ② 各方向の先頭石を一斉に号砲（スッは1回）
+        if (onFlipLift) onFlipLift();
+        for (const g of groups) {
+          const cell = g[0];
+          const entry = stoneMap.get(`${cell.r},${cell.c}`);
+          const idx = flipIdx++;
+          if (entry) flipLead(entry, nextBoard[cell.r][cell.c], () => onFlipLand && onFlipLand(idx));
+          else if (onFlipLand) onFlipLand(idx);
+        }
+        // フォロワー（2枚目以降）は号砲が回り始める頃から距離順に波状
+        const followerStart = (150 + HOLD_MS) * SPEED;
+        const stepMs = 95 * SPEED;
+        let maxFollowers = 0;
+        for (let j = 1; ; j++) {
+          const wave = groups.map((g) => g[j]).filter(Boolean);
+          if (wave.length === 0) break;
+          maxFollowers = j;
+          const delay = followerStart + (j - 1) * stepMs;
+          for (const cell of wave) {
+            const idx = flipIdx++;
+            setTimeout(() => {
+              const entry = stoneMap.get(`${cell.r},${cell.c}`);
+              if (entry) flipStone(entry, nextBoard[cell.r][cell.c]);
+              if (onFlipLand) onFlipLand(idx);
+            }, delay);
+          }
+        }
+        // 完了予約：号砲終端とフォロワー終端の遅い方＋余韻
+        const leadEnd = (150 + HOLD_MS + 360) * SPEED;
+        const followerEnd = maxFollowers >= 1 ? followerStart + (maxFollowers - 1) * stepMs + 480 * SPEED : 0;
+        setTimeout(resolve, Math.max(leadEnd, followerEnd) + 320 * SPEED);
+      }
     });
   }
 
