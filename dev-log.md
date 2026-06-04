@@ -215,3 +215,7 @@ DSP合成方針（R3）：低音ブラス様（鋸波＋ローパス）でG mino
 - デバッグ：`?slow=N` でアニメN倍スロー、その時 window.__view を露出（演出/回転の検証に使用）
 - 盤テクスチャ textures/board.png はユーザー提供（1254px・金グリッド線位置 LINES=[46,190,336,482,627,772,916,1062,1205]/1254 でマス中心算出）
 - gitは noreply identity。全コミット済み。テストは `node --test`（現40件 green：rules/game/evaluate/notation/stats/events_match/exporter/bgm）
+
+### 圧縮後の最優先（ユーザー指示 2026-06-04）
+- R5実装に直行しない。まず「UX向上のための細かい仕様・効果演出」をgrillする（grill-me/grill-with-docs）。
+- grillで詰める想定トピック例：演出の強弱/タイミング微調整、各イベントの見せ方、操作感、画面遷移、設定項目、結果画面、戦績の見せ方、合法手ヒントの出し方 等。決まった仕様はCONTEXT.md/dev-log/ADRに反映してからR5/R6実装へ。
