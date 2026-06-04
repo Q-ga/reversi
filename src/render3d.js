@@ -261,19 +261,24 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
   const partGeo = new THREE.SphereGeometry(STONE_R * 0.14, 8, 8);
   // 波紋リング：真円でなく半径をうねらせた不規則な波形（毎回同じ形でOK）。迫力を出す。
-  function makeWavyRing(inner, outer, seg = 96) {
+  function makeWavyRing(inner, outer, seg = 160) {
     const g = new THREE.RingGeometry(inner, outer, seg, 1);
     const pos = g.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), y = pos.getY(i);
       const r = Math.hypot(x, y), th = Math.atan2(y, x);
-      const f = 1 + 0.18 * Math.sin(5 * th + 0.6) + 0.10 * Math.sin(8 * th + 1.9) + 0.06 * Math.sin(13 * th);
+      // 強い抑揚＋高周波のトゲでジャギジャギに（真円感を消す）
+      const f = 1
+        + 0.34 * Math.sin(7 * th + 0.6)
+        + 0.22 * Math.sin(11 * th + 1.9)
+        + 0.16 * Math.sin(17 * th)
+        + 0.12 * Math.sin(29 * th + 0.4);
       pos.setXY(i, Math.cos(th) * r * f, Math.sin(th) * r * f);
     }
     pos.needsUpdate = true; g.computeVertexNormals();
     return g;
   }
-  const ringGeo = makeWavyRing(STONE_R * 0.5, STONE_R * 0.82);
+  const ringGeo = makeWavyRing(STONE_R * 0.45, STONE_R * 0.78);
   // 発光素材（toneMapped=falseで閾値を超えさせ、確実にbloomさせる）
   function glowMat(hex, mul = 2.2) {
     const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(mul), transparent: true, toneMapped: false });
@@ -306,21 +311,22 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   function spawnStreaks(x, z, hex = GOLD, n = 18) {
     for (let i = 0; i < n; i++) {
       const col = pickColor(hex);
-      const ang = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.28;
-      // 黒線は太く長く＝漫画の効果線としてはっきり見せる
-      const len = STONE_R * (col === INK ? 2.0 + Math.random() * 1.4 : 1.0 + Math.random() * 1.1);
-      const w = STONE_R * (col === INK ? 0.12 : 0.05);
+      const ink = col === INK;
+      const ang = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.22;
+      // 黒線は太く長く・遠くまで＝漫画の効果線として主役級にはっきり見せる
+      const len = STONE_R * (ink ? 2.8 + Math.random() * 2.2 : 1.0 + Math.random() * 1.0);
+      const w = STONE_R * (ink ? 0.18 : 0.05);
       const g = new THREE.Group();
-      g.position.set(x, col === INK ? 0.05 : 0.06, z); g.rotation.y = ang; // 放射方向＝groupローカルx
+      g.position.set(x, ink ? 0.08 : 0.06, z); g.rotation.y = ang; // 放射方向＝groupローカルx（黒は手前に）
       const m = new THREE.Mesh(new THREE.PlaneGeometry(len, w), streakMat(col));
       m.rotation.x = -Math.PI / 2; // 盤に寝かせる
       g.add(m); fxGroup.add(g);
-      const d0 = STONE_R * 0.6, d1 = STONE_R * (2.8 + Math.random() * 1.6);
-      addTween(380 + Math.random() * 200, (p) => {
+      const d0 = STONE_R * (ink ? 1.0 : 0.6), d1 = STONE_R * (ink ? 3.6 + Math.random() * 2.0 : 2.8 + Math.random() * 1.6);
+      addTween((ink ? 560 : 360) + Math.random() * 200, (p) => {
         const e = easeOutCubic(p);
         m.position.x = d0 + (d1 - d0) * e;       // 外へシュッと飛ぶ
-        m.scale.set(1 - 0.5 * p, 1, 1);          // 飛びながら短くなる
-        m.material.opacity = Math.min(1, 2 * (1 - p));
+        m.scale.set(1 - 0.45 * p, 1, 1);         // 飛びながら短くなる
+        m.material.opacity = Math.min(1, (ink ? 1.4 : 2) * (1 - p)); // 黒はゆっくり消す
       }, () => { fxGroup.remove(g); m.geometry.dispose(); m.material.dispose(); });
     }
   }
@@ -351,20 +357,14 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     const pos = ctx.r != null ? cellToWorld(ctx.r, ctx.c) : { x: 0, z: 0 };
     for (const tag of tags) {
       switch (tag) {
-        case "corner": // 多色の粒子＋黒を多めに混ぜた効果線でメリハリ
-          spawnParticles(pos.x, pos.z, [GOLD, DEEP], 26, 1.8);
-          spawnStreaks(pos.x, pos.z, [INK, GOLD, INK, DEEP, INK, GOLD], 26); // 黒を半分混ぜる
+        case "corner": // 黒の効果線を主役に。金粒子は控えめにして黒を埋もれさせない
+          spawnStreaks(pos.x, pos.z, [INK, INK, INK, GOLD, INK, DEEP], 28); // 黒が主体
+          spawnParticles(pos.x, pos.z, [GOLD, DEEP], 14, 1.6);
           spawnRing(pos.x, pos.z);
           break;
         case "bigFlip": // 粒子＋漫画の効果線が飛び散る（衝撃のシェイクはアニメ側で実施）
-          spawnParticles(pos.x, pos.z, [GREEN, GOLD], 22, 1.6);
-          spawnStreaks(pos.x, pos.z, [INK, GOLD, INK, DEEP], 24);
-          break;
-        case "reversal": // 全体フラッシュは廃止。着手点に粒子＋効果線＋揺れ
-          spawnParticles(pos.x, pos.z, [GOLD, DEEP], 18, 1.6);
-          spawnStreaks(pos.x, pos.z, [INK, GOLD, DEEP], 16);
-          spawnRing(pos.x, pos.z);
-          shakeCamera(0.18, 280);
+          spawnStreaks(pos.x, pos.z, [INK, INK, GOLD, INK, DEEP], 26);
+          spawnParticles(pos.x, pos.z, [GREEN, GOLD], 16, 1.6);
           break;
         case "gameover":
         case "shutout": celebrate(); break;

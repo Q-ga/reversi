@@ -6,7 +6,6 @@ const SFX_FILES = {
   flip_land: "./audio/flip_land.wav",
   bell: "./audio/bell.wav",
   big_swoosh: "./audio/big_swoosh.wav",
-  reversal: "./audio/reversal.wav",
   fanfare_win: "./audio/fanfare_win.wav",
   fanfare_lose: "./audio/fanfare_lose.wav",
 };
@@ -78,7 +77,7 @@ export function playFlipLand(i = 0) {
 const EVENT_SOUND = {
   corner: ["bell", 0.85],
   bigFlip: ["big_swoosh", 0.8], // 大量返し：吸い込む「ヒュォー」
-  reversal: ["reversal", 0.9],
+  // 逆転(reversal)は演出・音とも廃止（ユーザー要望）
   gameover: ["fanfare_win", 1.0],
   "gameover-draw": ["fanfare_lose", 0.7],
   shutout: ["fanfare_win", 1.0],
