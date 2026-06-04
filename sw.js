@@ -1,5 +1,5 @@
 // オフライン対応のサービスワーカー（アプリシェルをキャッシュ）。
-const CACHE = "reversi-v12";
+const CACHE = "reversi-v13";
 const ASSETS = [
   "./",
   "./index.html",
