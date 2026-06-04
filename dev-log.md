@@ -191,3 +191,27 @@ DSP合成方針（R3）：低音ブラス様（鋸波＋ローパス）でG mino
   参照=カバレフスキー「道化師のギャロップ」(F major,速い疾走,スネア駆動,木管/木琴)。ただし明るさは不要なので短調・ベル/木琴の華やかさ無し・lowpassで暗く。
 - 8分でroot/5thを刻む低音ブラス＋スネア様駆動＋下降基調の短調モチーフ。bpm152。
 - AUDIO_VER=8, sw v8
+
+## 2026-06-04 現在地・再開メモ（コンテキスト圧縮前）
+
+### 進捗（垂直スライス）
+- R1 3D盤・石 / R2 立体めくり / R3 音(DSP生成) / R4 bloom演出 … 完了（コミット済み）
+- 次の一手：R5 UI全面リデザイン（黒＋金ダークラグジュアリー・明朝見出し）＋「メインプレイヤー概念の実コード撤去」。その後 R6（PWA更新＋旧2D層削除＋実機通し検証）
+
+### R5でやること（設計は確定済み・コードは未反映）
+- 設定画面の「★主役を選ぶ」UI削除、対局画面の ★主役バッジ/光るフレーム/相手dim を撤去
+- main.js から match.mainColor / mainRef / seg-main / showResultのmainColor / rematchのmainRef を除去（演出・BGMは既にグローバル化済みなので主役は表示用途しか残っていない）
+- 全画面（メニュー/設定/対局/結果/戦績/プロフィール）を黒＋金、見出し=明朝+金/本文=サンセリフ、パネル/ボタン=黒地+金細線に
+- 旧2D層 src/render.js・src/effects.js は未使用（R6で削除予定。sw.jsのASSETSからも除外する）
+
+### 非自明な前提（重要）
+- 開発サーバ：`node scripts/devserver.mjs`（:8765・Cache-Control:no-store）。python http.serverは使わない
+- Service Worker：localhostでは index.html が自動で unregister＋caches全削除（開発中の旧キャッシュ事故防止）。本番のみSW有効。旧キャッシュに嵌ったら Cmd+Shift+R を1回
+- 音更新時は src/audio.js の AUDIO_VER を上げる（現在7。※BGM/効果音のfetchに ?v= で付与）。sw.js の CACHE は現在 v10
+- 音源は `node scripts/gen-audio.mjs` で audio/*.wav を全再生成（再現可能）。生成後レベルはnodeで peak/rms 測定して確認する習慣
+- BGMは2状態のみ：normal（前半＋中盤）/ endgame（=bgm_close＝Dマイナーの暗い疾走ギャロップ）。bgm_oneside.wavは未使用残置
+- 効果音：着石place / めくり=flip_lift(スッ・手ごと1回,小)＋flip_land(コツ・連鎖で即時連打・音程上昇,大) / 角=bell(シャキーン) / reversal / fanfare_win / fanfare_lose
+- 3D描画：真上見下ろし固定カメラ。石=上半黒/下半白の2段円柱（90°で黒白半々）。めくり=Z軸回転(左から)・easeInOutCubic・浮上(LIFT)→着地バウンド。連鎖stepMs=95。bloomはEffectComposer→RenderPass→UnrealBloomPass→OutputPass（OutputPass必須＝無いと盤が真っ黒）
+- デバッグ：`?slow=N` でアニメN倍スロー、その時 window.__view を露出（演出/回転の検証に使用）
+- 盤テクスチャ textures/board.png はユーザー提供（1254px・金グリッド線位置 LINES=[46,190,336,482,627,772,916,1062,1205]/1254 でマス中心算出）
+- gitは noreply identity。全コミット済み。テストは `node --test`（現40件 green：rules/game/evaluate/notation/stats/events_match/exporter/bgm）
