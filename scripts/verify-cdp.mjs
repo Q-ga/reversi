@@ -78,8 +78,8 @@ async function run() {
     onCornerHit:()=>cornerHit=true
   });
   const arcX=[];
-  await sleep(1850);            // 出現+溜め+落下を飛ばし、着地後のジッタ区間へ
-  for (let i=0;i<16;i++){ const e=v.stoneMap.get('0,0'); arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null); await sleep(30); }
+  await sleep(1530);            // 出現+溜め+落下を飛ばし、着地直後(第1相)からサンプル
+  for (let i=0;i<22;i++){ const e=v.stoneMap.get('0,0'); arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null); await sleep(40); }
   await pC;
   const ys = arcY.filter(x=>x!=null);
   return { ok:true, appeared, landed, liftCount, landCount, cornerHit,

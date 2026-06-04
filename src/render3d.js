@@ -412,13 +412,14 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
 
   // ④ ヒットストップの揺れ：置石を盤面内で小刻みに振動（二重指数の減衰でメリハリ）。
+  // はっきり視認できるよう振幅大きめ・周波数低めに。隣マスへはめり込まない範囲。
   function jitterStone(group) {
     const restX = group.position.x, restZ = group.position.z;
-    const DUR = 300 * SPEED;
-    const A1 = STONE_R * 0.24, A2 = STONE_R * 0.06; // 第1相(大・速)＋第2相(小・遅)
+    const DUR = 460 * SPEED;
+    const A1 = STONE_R * 0.55, A2 = STONE_R * 0.14; // 第1相(大・速)＋第2相(小・遅)
     addTween(DUR, (p) => {
-      const amp = A1 * Math.exp(-9 * p) + A2 * Math.exp(-2.2 * p);
-      const ph = p * Math.PI * 2 * 7;
+      const amp = A1 * Math.exp(-9 * p) + A2 * Math.exp(-2.4 * p);
+      const ph = p * Math.PI * 2 * 5.5; // ゆっくりめのビリビリ（残像にならない速さ）
       group.position.x = restX + Math.sin(ph) * amp;
       group.position.z = restZ + Math.cos(ph * 1.13) * amp;
     }, () => { group.position.x = restX; group.position.z = restZ; });
@@ -452,7 +453,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
           if (isCorner) {                          // ④ ヒットストップ（光・音・揺れを一点に同期）
             if (onCornerHit) onCornerHit();
             jitterStone(placed.group);
-            shakeCamera(0.1, 260);
+            shakeCamera(0.22, 420); // 盤全体にもはっきり衝撃
             setTimeout(runFlips, 280 * SPEED);     // 停止が収まってからめくり開始
           } else {
             runFlips();
