@@ -72,11 +72,22 @@ const CORNER = `(()=>{
   init[3][3]=2;init[3][4]=1;init[4][3]=1;init[4][4]=2; init[2][3]=1; init[3][3]=1;
   const prevC=clone(init); prevC[0][2]=1; prevC[0][1]=2;
   const nextC=clone(prevC); nextC[0][0]=1; nextC[0][1]=1;
-  window.__C={hit:false,arcX:[]}; const baseX=v.cellToWorld(0,0).x;
+  window.__C={hit:false,arcX:[],camX:[]}; const baseX=v.cellToWorld(0,0).x; const camX0=v.camera.position.x;
   v.animateMove(prevC,nextC,{r:0,c:0},1,{onImpact:()=>window.__C.hit=true,isBig:false});
   (async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-    for(let i=0;i<45;i++){const e=v.stoneMap.get('0,0');window.__C.arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null);await sleep(40);}
+    for(let i=0;i<45;i++){const e=v.stoneMap.get('0,0');window.__C.arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null);
+      window.__C.camX.push(+(v.camera.position.x-camX0).toFixed(4));await sleep(40);}
     window.__C.done=true;})();
+  return {started:true};
+})()`;
+
+const BIG = `(()=>{
+  const v=window.__view; const clone=b=>b.map(r=>r.slice());
+  const init=Array.from({length:8},()=>Array(8).fill(0));
+  init[4][7]=1; for(let c=2;c<7;c++) init[4][c]=2; // (4,2..6)=白、bracket(4,7)=黒
+  const next=clone(init); next[4][1]=1; for(let c=2;c<7;c++) next[4][c]=1;
+  window.__B={hit:false};
+  v.animateMove(init,next,{r:4,c:1},1,{isBig:true,onImpact:()=>{window.__B.hit=true; v.applyEffects(['bigFlip'],{r:4,c:1});}});
   return {started:true};
 })()`;
 
@@ -105,9 +116,18 @@ const CORNER = `(()=>{
     }
     await sleep(900);
     const C = await evalIn(send, "window.__C");
-    console.log("④ cornerHit:", C.hit, "jitterMaxAbs:", Math.max(...C.arcX.map((x) => Math.abs(x || 0))).toFixed(4));
-    console.log("④ arcX:", JSON.stringify(C.arcX.slice(0, 24)));
+    console.log("④ cornerHit:", C.hit, "jitterMaxAbs:", Math.max(...C.arcX.map((x) => Math.abs(x || 0))).toFixed(4),
+      "camShakeMaxAbs:", Math.max(...C.camX.map((x) => Math.abs(x || 0))).toFixed(4));
     console.log("shots:", shots.map((s) => s.file).join(" "));
+
+    // 大量返し：効果線が飛び散る瞬間をスクショ
+    await evalIn(send, BIG, false);
+    await sleep(950); // 着地(約758ms@slow2)→onImpactで効果線発火、その直後を撮る
+    const rb = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync("/tmp/big_streaks.png", Buffer.from(rb.result.data, "base64"));
+    const B = await evalIn(send, "window.__B");
+    console.log("大量返し bigHit:", B.hit, "shot: /tmp/big_streaks.png");
+
     const err = await evalIn(send, "window.__err");
     console.log("errors:", JSON.stringify(err));
     ws.close();

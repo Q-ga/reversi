@@ -283,6 +283,25 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     addTween(620, (p) => { const s = 1 + p * 5.5; m.scale.set(s, s, s); m.material.opacity = 0.85 * (1 - p); },
       () => { fxGroup.remove(m); m.material.dispose(); });
   }
+  // 漫画の効果線：着手点から放射状に細い光線が外へ飛び散る（bloomで発光）。
+  function spawnStreaks(x, z, hex = GOLD, n = 18) {
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.28;
+      const len = STONE_R * (1.0 + Math.random() * 1.1), w = STONE_R * 0.05;
+      const g = new THREE.Group();
+      g.position.set(x, 0.06, z); g.rotation.y = ang; // 放射方向＝groupローカルx
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(len, w), glowMat(hex, 2.4));
+      m.rotation.x = -Math.PI / 2; // 盤に寝かせる
+      g.add(m); fxGroup.add(g);
+      const d0 = STONE_R * 0.6, d1 = STONE_R * (2.8 + Math.random() * 1.6);
+      addTween(380 + Math.random() * 200, (p) => {
+        const e = easeOutCubic(p);
+        m.position.x = d0 + (d1 - d0) * e;       // 外へシュッと飛ぶ
+        m.scale.set(1 - 0.5 * p, 1, 1);          // 飛びながら短くなる
+        m.material.opacity = Math.min(1, 2 * (1 - p));
+      }, () => { fxGroup.remove(g); m.geometry.dispose(); m.material.dispose(); });
+    }
+  }
   function flashBoard(hex = GOLD, peak = 0.4) {
     const m = new THREE.Mesh(flashGeo, glowMat(hex, 1.5));
     m.material.side = THREE.DoubleSide; m.material.depthWrite = false;
@@ -314,7 +333,10 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     for (const tag of tags) {
       switch (tag) {
         case "corner": spawnParticles(pos.x, pos.z, GOLD, 24, 1.8); spawnRing(pos.x, pos.z); break;
-        case "bigFlip": spawnParticles(pos.x, pos.z, GREEN, 16, 1.4); shakeCamera(0.12, 260); break;
+        case "bigFlip": // 粒子＋漫画の効果線が飛び散る（衝撃のシェイクはアニメ側で実施）
+          spawnParticles(pos.x, pos.z, GREEN, 20, 1.6);
+          spawnStreaks(pos.x, pos.z, GOLD, 20);
+          break;
         case "reversal": flashBoard(GOLD, 0.35); shakeCamera(0.1, 240); break;
         case "gameover":
         case "shutout": celebrate(); break;
@@ -455,7 +477,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
           if (special) {
             if (onImpact) onImpact();                 // 光＋音を着地の一点に同期
             if (isCorner) jitterStone(placed.group);  // 揺れは四隅のみ
-            shakeCamera(isCorner ? 0.22 : 0.16, isCorner ? 460 : 380);
+            shakeCamera(isCorner ? 0.7 : 0.55, isCorner ? 520 : 460); // 画面揺れを強調
             setTimeout(runFlips, FREEZE_MS * SPEED);   // フリーズ：演出が終わってからめくり
           } else {
             runFlips();

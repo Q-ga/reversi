@@ -110,10 +110,11 @@ const BGM_LEVEL = 0.9;     // BGMの定常音量
 function eqPowerCurves(level, steps = 64) {
   const out = new Float32Array(steps); // フェードアウト：level→0
   const inn = new Float32Array(steps); // フェードイン ：0→level
+  // 指数<1で両カーブが中央側に膨らみ、2曲が同時に大きく鳴る重複区間を増やす
   for (let i = 0; i < steps; i++) {
     const t = i / (steps - 1);
-    out[i] = level * Math.cos((t * Math.PI) / 2);
-    inn[i] = level * Math.sin((t * Math.PI) / 2);
+    out[i] = level * Math.pow(Math.cos((t * Math.PI) / 2), 0.6);
+    inn[i] = level * Math.pow(Math.sin((t * Math.PI) / 2), 0.6);
   }
   return { out, inn };
 }

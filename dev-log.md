@@ -273,3 +273,8 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 「四隅/大量返しはフリーズ→演出後にめくり」→ animateMoveに special(=isCorner||isBig)・FREEZE_MS=760ms・onImpact統合を導入。着地でフリーズ→光(＋音)→演出が終わる頃にめくり開始。main.jsで isBig=flippedCount>=5、onImpactでcorner/bigの光を着地に同期、後段applyEffects/playEventからは handledInAnim(corner/bigFlip)を除外
 - BGM移行をさらに緩く XFADE_SEC 4.0→6.0秒
 - コツ音：低音アクセントの主張を下げ(gain 0.5/0.30→0.28/0.14)、軽い残響を追加(reverb decay0.8/mix0.16)、バッファ0.28→0.42sでtail確保。AUDIO_VER 9→10
+
+### 実機フィードバック反映（2026-06-04 その4）
+- 画面揺れが見えない→ 角/大量返しのカメラシェイクを大幅強調（corner 0.22→0.7、big 0.16→0.55、dur長め）。CDPで camShakeMaxAbs 0.56、スクショで盤全体のシフト確認
+- BGMクロスフェードの重なりを増やす→ eqPowerCurves の cos/sin に指数0.6を掛け、中央寄りに膨らませて2曲が同時に大きく鳴る重複区間を拡大
+- 大量返しエフェクト強化→ spawnStreaks（着手点から放射状に飛び散る漫画の効果線・金・bloom発光）を追加し bigFlip に組込（既存green粒子は残置・数20に増）。/tmp/big_streaks.png で確認
