@@ -278,3 +278,10 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 画面揺れが見えない→ 角/大量返しのカメラシェイクを大幅強調（corner 0.22→0.7、big 0.16→0.55、dur長め）。CDPで camShakeMaxAbs 0.56、スクショで盤全体のシフト確認
 - BGMクロスフェードの重なりを増やす→ eqPowerCurves の cos/sin に指数0.6を掛け、中央寄りに膨らませて2曲が同時に大きく鳴る重複区間を拡大
 - 大量返しエフェクト強化→ spawnStreaks（着手点から放射状に飛び散る漫画の効果線・金・bloom発光）を追加し bigFlip に組込（既存green粒子は残置・数20に増）。/tmp/big_streaks.png で確認
+
+### 実機フィードバック反映（2026-06-04 その5）
+- ガイド(合法手ヒント)が出るのが早い→ main.jsに hintTimerId/HINT_DELAY=420ms を導入し renderHints を遅延。doMove冒頭・待った時に clearTimeout で競合回避
+- 四隅の画面揺れがまだ見えない→ shakeCamera を毎フレーム乱数から「方向性のある減衰正弦振動」に作り直し、強度 corner1.25/big0.9・dur長めに。CDPスクショでフレーム間の盤シフトを確認
+- 波紋がシンプルな円で迫力不足→ makeWavyRing で半径をうねらせた不規則な波形リングに（固定形状）。spawnRingが使用
+- 大量返しに音追加→ gen-audio.mjsに big_swoosh.wav（金属感＋高→低へ吸い込む下降スウィープ＋残響、1.6s/peak0.72）。audio.js SFX_FILES/EVENT_SOUND(bigFlip)に登録、main.js onImpactで playEvent("bigFlip")。sw.jsにも追加。AUDIO_VER 10→11
+- コツ音：頭の高音アタックのゲイン微減(0.34/0.16→0.28/0.13)、残響を気持ち増(reverb decay0.8→1.0/mix0.16→0.20)

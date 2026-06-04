@@ -25,6 +25,8 @@ let state = null;
 let view = null; // three.jsの盤ビュー（初回startMatchで生成し再利用）
 let busy = false;
 let cpuTimerId = null;
+let hintTimerId = null;       // 合法手ヒントの表示を少し遅らせるためのタイマー
+const HINT_DELAY = 420;       // 着手アニメ後、余韻を置いてからヒントを出す（ms）
 
 const $ = (id) => document.getElementById(id);
 
@@ -194,6 +196,7 @@ async function doMove(r, c) {
   const next = play(state, r, c);
   if (next === before) return; // 非合法
   busy = true;
+  clearTimeout(hintTimerId);
   view.clearHints();
 
   const color = state.current;
@@ -213,7 +216,7 @@ async function doMove(r, c) {
     // ④ 角／大量返しは着地でフリーズし、光＋音を先に出してからめくる
     onImpact: () => {
       if (isCorner) { audio.playEvent("corner"); view.applyEffects(["corner"], { r, c }); }
-      else if (isBig) { view.applyEffects(["bigFlip"], { r, c, flippedCount, color }); }
+      else if (isBig) { audio.playEvent("bigFlip"); view.applyEffects(["bigFlip"], { r, c, flippedCount, color }); }
     },
   });
 
@@ -233,7 +236,8 @@ async function doMove(r, c) {
   for (const tag of tags) { if (handledInAnim.has(tag)) continue; audio.playEvent(tag); }
   view.applyEffects(tags.filter((t) => !handledInAnim.has(t)), { r, c, flippedCount, color });
 
-  view.renderHints(state, match.hints);
+  // 余韻を置いてからヒントを出す（着手直後に光らせない）
+  hintTimerId = setTimeout(() => view.renderHints(state, match.hints), HINT_DELAY);
   renderPanels();
   updateMessage();
   busy = false;
@@ -322,6 +326,7 @@ $("btn-undo").addEventListener("click", async () => {
   );
   // 棋譜も巻き戻し（簡易：末尾を落とす）
   match.moves = match.moves.slice(0, state.history.length);
+  clearTimeout(hintTimerId);
   view.sync(state, match.hints);
   renderPanels();
   updateMessage();

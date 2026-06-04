@@ -253,7 +253,20 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   scene.add(fxGroup);
   const GOLD = 0xffd06a, GREEN = 0x9ff0a8;
   const partGeo = new THREE.SphereGeometry(STONE_R * 0.14, 8, 8);
-  const ringGeo = new THREE.RingGeometry(STONE_R * 0.55, STONE_R * 0.8, 40);
+  // 波紋リング：真円でなく半径をうねらせた不規則な波形（毎回同じ形でOK）。迫力を出す。
+  function makeWavyRing(inner, outer, seg = 96) {
+    const g = new THREE.RingGeometry(inner, outer, seg, 1);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);
+      const r = Math.hypot(x, y), th = Math.atan2(y, x);
+      const f = 1 + 0.18 * Math.sin(5 * th + 0.6) + 0.10 * Math.sin(8 * th + 1.9) + 0.06 * Math.sin(13 * th);
+      pos.setXY(i, Math.cos(th) * r * f, Math.sin(th) * r * f);
+    }
+    pos.needsUpdate = true; g.computeVertexNormals();
+    return g;
+  }
+  const ringGeo = makeWavyRing(STONE_R * 0.5, STONE_R * 0.82);
   const flashGeo = new THREE.PlaneGeometry(BOARD, BOARD);
   // 発光素材（toneMapped=falseで閾値を超えさせ、確実にbloomさせる）
   function glowMat(hex, mul = 2.2) {
@@ -311,14 +324,18 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
       () => { fxGroup.remove(m); m.material.dispose(); });
   }
   let shaking = false;
+  // 方向性のある減衰振動＝「ガクッ」と大きく揺れて収まる（毎フレーム乱数より視認しやすい）。
   function shakeCamera(intensity = 0.13, dur = 280) {
     if (shaking) return;
     shaking = true;
     const bx = camera.position.x, bz = camera.position.z;
+    const ang = Math.random() * Math.PI * 2; // 揺れの主軸（毎回ランダム）
     addTween(dur, (p) => {
-      const k = intensity * (1 - p);
-      camera.position.x = bx + (Math.random() * 2 - 1) * k;
-      camera.position.z = bz + (Math.random() * 2 - 1) * k;
+      const amp = intensity * Math.pow(1 - p, 1.4);     // 減衰
+      const osc = Math.sin(p * Math.PI * 2 * 5.5);       // 主軸方向の往復
+      const jit = (Math.random() * 2 - 1) * intensity * 0.25 * (1 - p); // 微細な乱れ
+      camera.position.x = bx + Math.cos(ang) * amp * osc + jit;
+      camera.position.z = bz + Math.sin(ang) * amp * osc + jit;
     }, () => { camera.position.x = bx; camera.position.z = bz; shaking = false; });
   }
   function celebrate() {
@@ -477,7 +494,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
           if (special) {
             if (onImpact) onImpact();                 // 光＋音を着地の一点に同期
             if (isCorner) jitterStone(placed.group);  // 揺れは四隅のみ
-            shakeCamera(isCorner ? 0.7 : 0.55, isCorner ? 520 : 460); // 画面揺れを強調
+            shakeCamera(isCorner ? 1.25 : 0.9, isCorner ? 560 : 480); // 画面揺れを強く
             setTimeout(runFlips, FREEZE_MS * SPEED);   // フリーズ：演出が終わってからめくり
           } else {
             runFlips();

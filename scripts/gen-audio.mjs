@@ -93,9 +93,9 @@ const SR = 44100;
   // 明るいトランジェント（中高域）＝小型スピーカーでも抜ける
   for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.8 * Math.exp(-t / 0.005); }
   lowpass(b, 7000, SR);
-  // 頭：高く澄んだアタック（クリアな「チッ」）＝開始を澄んだ音で引き締める
-  tone(b, SR, { type: "sine", freq: 2400, t0: 0, dur: 0.045, gain: 0.34, attack: 0.0004, decay: 0.012 });
-  tone(b, SR, { type: "sine", freq: 3200, t0: 0, dur: 0.030, gain: 0.16, attack: 0.0004, decay: 0.008 });
+  // 頭：高く澄んだアタック（クリアな「チッ」）＝わずかにゲインを下げて尖りを抑える
+  tone(b, SR, { type: "sine", freq: 2400, t0: 0, dur: 0.045, gain: 0.28, attack: 0.0004, decay: 0.012 });
+  tone(b, SR, { type: "sine", freq: 3200, t0: 0, dur: 0.030, gain: 0.13, attack: 0.0004, decay: 0.008 });
   // ベース：今の「コツ」
   tone(b, SR, { type: "sine", freq: 950, t0: 0, dur: 0.05, gain: 0.6, decay: 0.018 }); // カチッ
   tone(b, SR, { type: "sine", freq: 520, t0: 0, dur: 0.08, gain: 0.45, decay: 0.03 }); // 木質
@@ -103,8 +103,28 @@ const SR = 44100;
   // 尻：低音アクセント（控えめに・やや遅れて「ドゥン」）＝重みは出すが主張は抑える
   tone(b, SR, { type: "sine", freq: 120, t0: 0.018, dur: 0.17, gain: 0.28, attack: 0.004, decay: 0.085 });
   tone(b, SR, { type: "sine", freq: 80,  t0: 0.022, dur: 0.20, gain: 0.14, attack: 0.005, decay: 0.11 });
-  const wet = reverb(b, SR, { decay: 0.8, mix: 0.16 }); // 軽い残響で安っぽさを消す
+  const wet = reverb(b, SR, { decay: 1.0, mix: 0.20 }); // 最後に気持ちだけ残響
   console.log("✔", writeWav("place.wav", normalize(wet, 0.97), SR));
+}
+
+// 大量返し：シャキーン系の金属感＋高→低へ吸い込まれる「ヒュォー」（下降スウィープ＋残響）。
+{
+  const b = blank(1.6, SR);
+  const sw = (0.55 * SR) | 0;
+  for (let i = 0; i < sw; i++) {
+    const t = i / SR, p = t / 0.55;
+    const f = 4600 - 3700 * p * p;                 // 高→低へ吸い込まれる
+    const env = Math.sin(Math.min(p, 1) * Math.PI) * 0.9;
+    b[i] += Math.sin(TAU * f * t) * 0.20 * env;
+    b[i] += Math.sin(TAU * f * 0.5 * t) * 0.12 * env; // 1オクターブ下＝厚み
+  }
+  // 吸引のノイズ（風を吸い込む気配・減衰）
+  for (let i = 0; i < (0.55 * SR) | 0; i++) { const t = i / SR; b[i] += noise() * 0.12 * Math.exp(-t / 0.2); }
+  // 余韻の金属リング（控えめ）
+  [2600, 3400, 4300].forEach((f, k) =>
+    tone(b, SR, { type: "sine", freq: f, t0: 0.2, dur: 1.0, gain: 0.09 / (1 + k * 0.4), attack: 0.002, decay: 0.3 }));
+  const wet = reverb(b, SR, { decay: 1.7, mix: 0.38 });
+  console.log("✔", writeWav("big_swoosh.wav", normalize(wet, 0.72), SR));
 }
 
 // 返し(1)：スッと持ち上げる音（短くスッキリ。washy/リバーブ感なし）

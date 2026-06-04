@@ -73,7 +73,7 @@ const CORNER = `(()=>{
   const prevC=clone(init); prevC[0][2]=1; prevC[0][1]=2;
   const nextC=clone(prevC); nextC[0][0]=1; nextC[0][1]=1;
   window.__C={hit:false,arcX:[],camX:[]}; const baseX=v.cellToWorld(0,0).x; const camX0=v.camera.position.x;
-  v.animateMove(prevC,nextC,{r:0,c:0},1,{onImpact:()=>window.__C.hit=true,isBig:false});
+  v.animateMove(prevC,nextC,{r:0,c:0},1,{onImpact:()=>{window.__C.hit=true; v.applyEffects(['corner'],{r:0,c:0});},isBig:false});
   (async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     for(let i=0;i<45;i++){const e=v.stoneMap.get('0,0');window.__C.arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null);
       window.__C.camX.push(+(v.camera.position.x-camX0).toFixed(4));await sleep(40);}

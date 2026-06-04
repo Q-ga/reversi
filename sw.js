@@ -37,6 +37,7 @@ const ASSETS = [
   "./audio/flip_lift.wav",
   "./audio/flip_land.wav",
   "./audio/bell.wav",
+  "./audio/big_swoosh.wav",
   "./audio/reversal.wav",
   "./audio/fanfare_win.wav",
   "./audio/fanfare_lose.wav",

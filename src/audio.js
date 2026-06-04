@@ -5,6 +5,7 @@ const SFX_FILES = {
   flip_lift: "./audio/flip_lift.wav",
   flip_land: "./audio/flip_land.wav",
   bell: "./audio/bell.wav",
+  big_swoosh: "./audio/big_swoosh.wav",
   reversal: "./audio/reversal.wav",
   fanfare_win: "./audio/fanfare_win.wav",
   fanfare_lose: "./audio/fanfare_lose.wav",
@@ -27,7 +28,7 @@ let currentBgm = null;
 let bgmRunning = false;
 
 // 音源を更新したらここを上げる（Service Worker等の旧キャッシュを確実に回避）
-const AUDIO_VER = 10;
+const AUDIO_VER = 11;
 // モジュール読込時にファイルを先読み（decodeはinit後）
 for (const [k, url] of Object.entries({ ...SFX_FILES, ...BGM_FILES })) {
   fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
@@ -76,6 +77,7 @@ export function playFlipLand(i = 0) {
 
 const EVENT_SOUND = {
   corner: ["bell", 0.85],
+  bigFlip: ["big_swoosh", 0.8], // 大量返し：吸い込む「ヒュォー」
   reversal: ["reversal", 0.9],
   gameover: ["fanfare_win", 1.0],
   "gameover-draw": ["fanfare_lose", 0.7],
