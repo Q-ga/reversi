@@ -188,24 +188,27 @@ const BR = 32000;
   console.log("✔", writeWav("bgm_normal.wav", normalize(seamless(b, BR), 0.55), BR));
 }
 
-// 終盤・接戦：白熱した緊迫感（解決しない持続音＋不協＋刻みパルス）
+// 終盤：暗めの駆けるギャロップ（道化師のギャロップ風の疾走感＝緊迫。ただし短調で暗く・ベル無し）
 {
-  const L = 8, b = blank(L, BR);
-  // 半音/三全音でぶつかる持続ドローン
-  [146.8, 155.6, 207.7].forEach((f) => {
-    for (let i = 0; i < b.length; i++) {
-      const t = i / BR, swell = 0.5 + 0.5 * Math.sin(TAU * 0.12 * t);
-      b[i] += Math.sin(TAU * f * t) * 0.05 * swell;
-    }
-  });
-  // 心拍のような低い刻み（緊張）＋中域の刻みで“動き”をはっきり
-  for (let beat = 0; beat * 0.5 < L; beat++) {
-    tone(b, BR, { type: "sine", freq: 70, t0: beat * 0.5, dur: 0.12, gain: 0.5, decay: 0.06 });        // ドッ…ドッ
-    tone(b, BR, { type: "tri", freq: 740, t0: beat * 0.5 + 0.25, dur: 0.06, gain: 0.12, decay: 0.03 }); // 裏拍の刻み
+  const bpm = 152, beat = 60 / bpm, eighth = beat / 2, L = beat * 16, b = blank(L, BR);
+  // Dマイナー。低音ブラスの疾走ベース（8分でroot/5thを刻む＝ギャロップ）
+  const D2 = 73.4, A2 = 110, F2 = 87.3, bassSeq = [D2, A2, D2, A2, F2, A2, D2, A2];
+  const eN = Math.round(L / eighth);
+  for (let k = 0; k < eN; k++) {
+    const f = bassSeq[k % bassSeq.length];
+    tone(b, BR, { type: "saw", freq: f, t0: k * eighth, dur: eighth * 0.82, gain: 0.16, decay: eighth * 0.6 });
+    // スネア様の駆動（各8分・表拍は強め）
+    const s0 = (k * eighth * BR) | 0, accent = k % 2 === 0 ? 0.10 : 0.05;
+    for (let j = 0; j < (0.05 * BR) | 0 && s0 + j < b.length; j++) { const t = j / BR; b[s0 + j] += noise() * accent * Math.exp(-t / 0.02); }
   }
-  lowpass(b, 2600, BR);
-  // 通常より明確に大きく＝切替が分かる
-  console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.8), BR));
+  // 中域ブラスの短い短調モチーフ（緊迫・上ずらない暗さ）。2拍ごとに駆ける音型
+  const D4 = 293.7, E4 = semis(293.7, 2), F4 = semis(293.7, 3), A4 = semis(293.7, 7), G4 = semis(293.7, 5);
+  const motif = [A4, G4, F4, E4, F4, D4, E4, D4]; // 下降基調の短調モチーフ
+  motif.forEach((f, k) => {
+    tone(b, BR, { type: "saw", freq: f, t0: k * (2 * eighth), dur: eighth * 1.4, gain: 0.13, vib: 5, decay: eighth * 1.2 });
+  });
+  lowpass(b, 2400, BR); // 高域を抑えて暗く（木琴/ベルの華やかさを出さない）
+  console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.85), BR));
 }
 
 // 終盤・一方的：重低音の圧迫感（行進曲ではない）。深いドローン＋ゆっくり迫る重い脈動＋不穏なうねり。
