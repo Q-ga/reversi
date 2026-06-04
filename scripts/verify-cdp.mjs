@@ -57,13 +57,14 @@ const SETUP = `(async()=>{
   init[3][3]=2;init[3][4]=1;init[4][3]=1;init[4][4]=2;
   // ① 着手の溜め＋② 号砲：黒(2,3)→(3,3)
   const nextA=clone(init); nextA[2][3]=1; nextA[3][3]=1;
-  window.__A={appeared:false,landed:false,lift:0,land:0,arcY:[]};
+  window.__A={appeared:false,landed:false,lift:0,land:0,arcY:[],flipY:[]};
   const pA=v.animateMove(init,nextA,{r:2,c:3},1,{
     onAppear:()=>window.__A.appeared=true,onLand:()=>window.__A.landed=true,
     onFlipLift:()=>window.__A.lift++,onFlipLand:()=>window.__A.land++});
-  for(let i=0;i<22;i++){const e=v.stoneMap.get('2,3');window.__A.arcY.push(e?+e.group.position.y.toFixed(3):null);await sleep(70);}
+  for(let i=0;i<30;i++){const e=v.stoneMap.get('2,3');window.__A.arcY.push(e?+e.group.position.y.toFixed(3):null);
+    const f=v.stoneMap.get('3,3');window.__A.flipY.push(f?+f.group.position.y.toFixed(3):null);await sleep(70);}
   await pA;
-  return {ok:true,restY:v.STONE_H/2};
+  return {ok:true,restY:v.STONE_H/2,flipLiftConst:+(v.STONE_R*3.8).toFixed(3)};
 })()`;
 
 const CORNER = `(()=>{
@@ -101,8 +102,9 @@ const BIG = `(()=>{
     const a = await evalIn(send, SETUP);
     console.log("SETUP:", JSON.stringify(a));
     const A = await evalIn(send, "window.__A");
-    console.log("① arcY:", JSON.stringify(A.arcY));
     console.log("① appeared/landed/lift/land:", A.appeared, A.landed, A.lift, A.land);
+    const flipPeak = Math.max(...A.flipY.filter((x) => x != null));
+    console.log("② 返る石の浮きピーク:", flipPeak.toFixed(3), "(restY+FLIP_LIFT目安≈", (a.restY + a.flipLiftConst).toFixed(3), ")");
 
     // 四隅：アニメ開始→着地(約758ms@slow2)後のジッタ中にスクショ3枚
     await evalIn(send, CORNER, false);

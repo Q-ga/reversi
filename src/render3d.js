@@ -252,6 +252,13 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   const fxGroup = new THREE.Group();
   scene.add(fxGroup);
   const GOLD = 0xffd06a, GREEN = 0x9ff0a8;
+  const DEEP = 0xcf8f10, INK = 0x050505; // 濃いめの黄／ほぼ黒（効果線のメリハリ用）
+  const pickColor = (c) => (Array.isArray(c) ? c[(Math.random() * c.length) | 0] : c);
+  // 効果線の素材：黄系は発光、黒は発光させず暗い線として見せる
+  function streakMat(hex) {
+    if (hex === INK) return new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, toneMapped: true });
+    return glowMat(hex, 2.4);
+  }
   const partGeo = new THREE.SphereGeometry(STONE_R * 0.14, 8, 8);
   // 波紋リング：真円でなく半径をうねらせた不規則な波形（毎回同じ形でOK）。迫力を出す。
   function makeWavyRing(inner, outer, seg = 96) {
@@ -276,7 +283,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
 
   function spawnParticles(x, z, hex = GOLD, n = 18, spread = 1.6) {
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(partGeo, glowMat(hex));
+      const m = new THREE.Mesh(partGeo, glowMat(pickColor(hex)));
       m.position.set(x, STONE_H, z);
       fxGroup.add(m);
       const ang = Math.random() * Math.PI * 2, sp = spread * (0.4 + Math.random());
@@ -296,14 +303,15 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     addTween(620, (p) => { const s = 1 + p * 5.5; m.scale.set(s, s, s); m.material.opacity = 0.85 * (1 - p); },
       () => { fxGroup.remove(m); m.material.dispose(); });
   }
-  // 漫画の効果線：着手点から放射状に細い光線が外へ飛び散る（bloomで発光）。
+  // 漫画の効果線：着手点から放射状に細い線が外へ飛び散る。色は配列可（黄系は発光・黒は暗線）。
   function spawnStreaks(x, z, hex = GOLD, n = 18) {
     for (let i = 0; i < n; i++) {
+      const col = pickColor(hex);
       const ang = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.28;
-      const len = STONE_R * (1.0 + Math.random() * 1.1), w = STONE_R * 0.05;
+      const len = STONE_R * (1.0 + Math.random() * 1.1), w = STONE_R * (col === INK ? 0.07 : 0.05);
       const g = new THREE.Group();
-      g.position.set(x, 0.06, z); g.rotation.y = ang; // 放射方向＝groupローカルx
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(len, w), glowMat(hex, 2.4));
+      g.position.set(x, col === INK ? 0.05 : 0.06, z); g.rotation.y = ang; // 放射方向＝groupローカルx
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(len, w), streakMat(col));
       m.rotation.x = -Math.PI / 2; // 盤に寝かせる
       g.add(m); fxGroup.add(g);
       const d0 = STONE_R * 0.6, d1 = STONE_R * (2.8 + Math.random() * 1.6);
@@ -349,10 +357,14 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     const pos = ctx.r != null ? cellToWorld(ctx.r, ctx.c) : { x: 0, z: 0 };
     for (const tag of tags) {
       switch (tag) {
-        case "corner": spawnParticles(pos.x, pos.z, GOLD, 24, 1.8); spawnRing(pos.x, pos.z); break;
+        case "corner": // 多色の粒子＋黒/濃黄を混ぜた効果線でメリハリ
+          spawnParticles(pos.x, pos.z, [GOLD, DEEP, GOLD], 26, 1.8);
+          spawnStreaks(pos.x, pos.z, [GOLD, DEEP, INK, GOLD, DEEP], 22);
+          spawnRing(pos.x, pos.z);
+          break;
         case "bigFlip": // 粒子＋漫画の効果線が飛び散る（衝撃のシェイクはアニメ側で実施）
-          spawnParticles(pos.x, pos.z, GREEN, 20, 1.6);
-          spawnStreaks(pos.x, pos.z, GOLD, 20);
+          spawnParticles(pos.x, pos.z, [GREEN, GOLD], 22, 1.6);
+          spawnStreaks(pos.x, pos.z, [GOLD, DEEP, INK], 22);
           break;
         case "reversal": flashBoard(GOLD, 0.35); shakeCamera(0.1, 240); break;
         case "gameover":
@@ -374,10 +386,11 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
 
   // 浮上量・溜めの定数
   const LIFT = STONE_R * 2.2;        // 着手ドロップインの基準高さ
-  const FLIP_LIFT = STONE_R * 3.2;   // ② めくりの浮上は全体的に高く
+  const FLIP_LIFT = STONE_R * 3.8;   // ② めくりの浮上は全体的に高く
   const HOVER = STONE_R * 2.4;       // ① 出現時の空中静止高さ
   const HOLD_MS = 135;               // 溜め時間（着手・めくり号砲の目安）
   const FREEZE_MS = 760;             // ④ 角/大量返し：着地後フリーズ（演出が終わる頃）→めくり
+  const PRE_FLIP_MS = 190;           // 通常手：着地後に一拍おいてから号砲（隅以外でも溜め）
 
   // ① 着手の溜め：盤の真上に出現(フッ)→空中で静止(溜め)→落下＋着地(コツ)。
   function placeWithAnticipation(group, color, { onAppear, onLand } = {}) {
@@ -412,7 +425,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
 
   // フォロワー（2枚目以降）の裏返し：浮上しながらZ軸180°回転して着地。浮上は高め。
-  function flipStone(entry, toColor, dur = 480) {
+  function flipStone(entry, toColor, dur = 520) {
     const from = entry.group.rotation.z;
     const to = colorToFlip(toColor);
     entry.color = toColor;
@@ -497,7 +510,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
             shakeCamera(isCorner ? 1.25 : 0.9, isCorner ? 560 : 480); // 画面揺れを強く
             setTimeout(runFlips, FREEZE_MS * SPEED);   // フリーズ：演出が終わってからめくり
           } else {
-            runFlips();
+            setTimeout(runFlips, PRE_FLIP_MS * SPEED);  // 通常手：一拍おいてから号砲（溜め）
           }
         },
       });
@@ -534,7 +547,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
         }
         // 完了予約：号砲終端とフォロワー終端の遅い方＋余韻
         const leadEnd = (150 + HOLD_MS + 360) * SPEED;
-        const followerEnd = maxFollowers >= 1 ? followerStart + (maxFollowers - 1) * stepMs + 480 * SPEED : 0;
+        const followerEnd = maxFollowers >= 1 ? followerStart + (maxFollowers - 1) * stepMs + 520 * SPEED : 0;
         setTimeout(resolve, Math.max(leadEnd, followerEnd) + 320 * SPEED);
       }
     });

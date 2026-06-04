@@ -285,3 +285,8 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 波紋がシンプルな円で迫力不足→ makeWavyRing で半径をうねらせた不規則な波形リングに（固定形状）。spawnRingが使用
 - 大量返しに音追加→ gen-audio.mjsに big_swoosh.wav（金属感＋高→低へ吸い込む下降スウィープ＋残響、1.6s/peak0.72）。audio.js SFX_FILES/EVENT_SOUND(bigFlip)に登録、main.js onImpactで playEvent("bigFlip")。sw.jsにも追加。AUDIO_VER 10→11
 - コツ音：頭の高音アタックのゲイン微減(0.34/0.16→0.28/0.13)、残響を気持ち増(reverb decay0.8→1.0/mix0.16→0.20)
+
+### 実機フィードバック反映（2026-06-04 その6）
+- 四隅エフェクトが一色→ 色パレットにDEEP(濃黄0xcf8f10)・INK(ほぼ黒)を追加。spawnParticles/spawnStreaksを色配列対応(pickColor)に。黒線はstreakMatで非発光(toneMapped:true,黒)＝暗線として描く。corner=粒子[GOLD,DEEP]＋効果線[GOLD,DEEP,INK]、bigFlipも[GOLD,DEEP,INK]混在。CDPスクショで明金＋濃アンバー＋暗線の混在を確認
+- 複数枚めくり時の浮き不足／隅以外の最初のめくり溜め→ FLIP_LIFT STONE_R*3.2→3.8（先頭・フォロワー共通で浮き増、CDPで返る石ピーク1.946=restY+FLIP_LIFT一致）、flipStone dur480→520で浮き持続、通常手も PRE_FLIP_MS=190ms 着地後に一拍おいてから号砲（隅以外でも溜め）
+- 注：色用ヘルパ名が既存pick(クリック判定)と衝突→pickColorにリネーム済
