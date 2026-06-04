@@ -274,7 +274,6 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     return g;
   }
   const ringGeo = makeWavyRing(STONE_R * 0.5, STONE_R * 0.82);
-  const flashGeo = new THREE.PlaneGeometry(BOARD, BOARD);
   // 発光素材（toneMapped=falseで閾値を超えさせ、確実にbloomさせる）
   function glowMat(hex, mul = 2.2) {
     const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(mul), transparent: true, toneMapped: false });
@@ -308,7 +307,9 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     for (let i = 0; i < n; i++) {
       const col = pickColor(hex);
       const ang = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.28;
-      const len = STONE_R * (1.0 + Math.random() * 1.1), w = STONE_R * (col === INK ? 0.07 : 0.05);
+      // 黒線は太く長く＝漫画の効果線としてはっきり見せる
+      const len = STONE_R * (col === INK ? 2.0 + Math.random() * 1.4 : 1.0 + Math.random() * 1.1);
+      const w = STONE_R * (col === INK ? 0.12 : 0.05);
       const g = new THREE.Group();
       g.position.set(x, col === INK ? 0.05 : 0.06, z); g.rotation.y = ang; // 放射方向＝groupローカルx
       const m = new THREE.Mesh(new THREE.PlaneGeometry(len, w), streakMat(col));
@@ -322,14 +323,6 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
         m.material.opacity = Math.min(1, 2 * (1 - p));
       }, () => { fxGroup.remove(g); m.geometry.dispose(); m.material.dispose(); });
     }
-  }
-  function flashBoard(hex = GOLD, peak = 0.4) {
-    const m = new THREE.Mesh(flashGeo, glowMat(hex, 1.5));
-    m.material.side = THREE.DoubleSide; m.material.depthWrite = false;
-    m.rotation.x = -Math.PI / 2; m.position.set(0, 0.06, 0);
-    fxGroup.add(m);
-    addTween(600, (p) => { m.material.opacity = peak * Math.sin(Math.min(p, 1) * Math.PI); },
-      () => { fxGroup.remove(m); m.material.dispose(); });
   }
   let shaking = false;
   // 方向性のある減衰振動＝「ガクッ」と大きく揺れて収まる（毎フレーム乱数より視認しやすい）。
@@ -347,26 +340,32 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     }, () => { camera.position.x = bx; camera.position.z = bz; shaking = false; });
   }
   function celebrate() {
-    flashBoard(GOLD, 0.5);
-    for (let k = 0; k < 6; k++) {
+    // 全体フラッシュは使わず、盤上のあちこちに粒子と効果線を散らす
+    for (let k = 0; k < 8; k++) {
       const x = (Math.random() - 0.5) * BOARD * 0.85, z = (Math.random() - 0.5) * BOARD * 0.85;
-      spawnParticles(x, z, GOLD, 14, 1.5);
+      spawnParticles(x, z, [GOLD, DEEP], 14, 1.5);
+      if (k % 2 === 0) spawnStreaks(x, z, [GOLD, DEEP, INK], 12);
     }
   }
   function applyEffects(tags, ctx = {}) {
     const pos = ctx.r != null ? cellToWorld(ctx.r, ctx.c) : { x: 0, z: 0 };
     for (const tag of tags) {
       switch (tag) {
-        case "corner": // 多色の粒子＋黒/濃黄を混ぜた効果線でメリハリ
-          spawnParticles(pos.x, pos.z, [GOLD, DEEP, GOLD], 26, 1.8);
-          spawnStreaks(pos.x, pos.z, [GOLD, DEEP, INK, GOLD, DEEP], 22);
+        case "corner": // 多色の粒子＋黒を多めに混ぜた効果線でメリハリ
+          spawnParticles(pos.x, pos.z, [GOLD, DEEP], 26, 1.8);
+          spawnStreaks(pos.x, pos.z, [INK, GOLD, INK, DEEP, INK, GOLD], 26); // 黒を半分混ぜる
           spawnRing(pos.x, pos.z);
           break;
         case "bigFlip": // 粒子＋漫画の効果線が飛び散る（衝撃のシェイクはアニメ側で実施）
           spawnParticles(pos.x, pos.z, [GREEN, GOLD], 22, 1.6);
-          spawnStreaks(pos.x, pos.z, [GOLD, DEEP, INK], 22);
+          spawnStreaks(pos.x, pos.z, [INK, GOLD, INK, DEEP], 24);
           break;
-        case "reversal": flashBoard(GOLD, 0.35); shakeCamera(0.1, 240); break;
+        case "reversal": // 全体フラッシュは廃止。着手点に粒子＋効果線＋揺れ
+          spawnParticles(pos.x, pos.z, [GOLD, DEEP], 18, 1.6);
+          spawnStreaks(pos.x, pos.z, [INK, GOLD, DEEP], 16);
+          spawnRing(pos.x, pos.z);
+          shakeCamera(0.18, 280);
+          break;
         case "gameover":
         case "shutout": celebrate(); break;
         default: break; // pass / lastCell / gameover-draw は音のみ（控えめ）

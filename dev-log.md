@@ -290,3 +290,7 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 四隅エフェクトが一色→ 色パレットにDEEP(濃黄0xcf8f10)・INK(ほぼ黒)を追加。spawnParticles/spawnStreaksを色配列対応(pickColor)に。黒線はstreakMatで非発光(toneMapped:true,黒)＝暗線として描く。corner=粒子[GOLD,DEEP]＋効果線[GOLD,DEEP,INK]、bigFlipも[GOLD,DEEP,INK]混在。CDPスクショで明金＋濃アンバー＋暗線の混在を確認
 - 複数枚めくり時の浮き不足／隅以外の最初のめくり溜め→ FLIP_LIFT STONE_R*3.2→3.8（先頭・フォロワー共通で浮き増、CDPで返る石ピーク1.946=restY+FLIP_LIFT一致）、flipStone dur480→520で浮き持続、通常手も PRE_FLIP_MS=190ms 着地後に一拍おいてから号砲（隅以外でも溜め）
 - 注：色用ヘルパ名が既存pick(クリック判定)と衝突→pickColorにリネーム済
+
+### 実機フィードバック反映（2026-06-04 その7）
+- 四隅の黒効果線が見分けつかない→ 黒(INK)線を太く長く(w 0.07→0.12、len最大2.1→3.4倍)、cornerの効果線配列を黒半分[INK,GOLD,INK,DEEP,INK,GOLD]・本数26に。bigFlip/reversalにも黒多め。CDPスクショ(jit_980)で金の波紋に黒い太線が混在するのを確認
+- たまの全体黄色フラッシュがダサい→ flashBoard/flashGeo を完全削除。reversalは「着手点に粒子＋効果線＋リング＋揺れ」に、celebrateは「盤上各所に粒子＋効果線」に作り替え（全面発光プレーンは使わない）
