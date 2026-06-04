@@ -19,8 +19,8 @@ const cpuRef = (level) => ({ kind: "cpu", id: "cpu", name: `CPU（${["", "かん
 
 // --- アプリ状態 ---
 let profiles = [];
-let setup = { mode: "2p", black: null, white: null, mainId: null, level: 2, hints: true };
-let match = null; // { assignment, mainColor, mode, level, hints, startedAt, moves }
+let setup = { mode: "2p", black: null, white: null, level: 2, hints: true };
+let match = null; // { assignment, mode, level, hints, startedAt, moves }
 let state = null;
 let view = null; // three.jsの盤ビュー（初回startMatchで生成し再利用）
 let busy = false;
@@ -61,16 +61,14 @@ async function openSetup() {
   // 既定値
   setup.black = humanChoices[0];
   setup.white = setup.mode === "cpu" ? cpuRef(setup.level) : (humanChoices[1] || GUEST);
-  setup.mainId = setup.black.id;
 
-  renderSeg("seg-black", humanChoices, setup.black.id, (ref) => { setup.black = ref; syncMainChoices(); });
+  renderSeg("seg-black", humanChoices, setup.black.id, (ref) => { setup.black = ref; });
   if (setup.mode === "cpu") {
     $("field-white").style.display = "none";
   } else {
     $("field-white").style.display = "";
-    renderSeg("seg-white", humanChoices, setup.white.id, (ref) => { setup.white = ref; syncMainChoices(); });
+    renderSeg("seg-white", humanChoices, setup.white.id, (ref) => { setup.white = ref; });
   }
-  syncMainChoices();
   showScreen("setup");
 }
 
@@ -90,17 +88,6 @@ function renderSeg(containerId, choices, selId, onPick) {
   }
 }
 
-// 主役候補は「対局に出る人間側」。CPU戦は人間が主役固定。
-function syncMainChoices() {
-  const players = setup.mode === "cpu"
-    ? [setup.black]
-    : [setup.black, setup.white];
-  const humans = players.filter((p) => p.kind !== "cpu");
-  if (!humans.find((h) => h.id === setup.mainId)) setup.mainId = humans[0]?.id ?? setup.black.id;
-  renderSeg("seg-main", humans, setup.mainId, (ref) => { setup.mainId = ref.id; });
-  $("field-main").style.display = setup.mode === "cpu" ? "none" : "";
-}
-
 $("seg-level").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
@@ -113,11 +100,7 @@ $("opt-hints").addEventListener("change", (e) => { setup.hints = e.target.checke
 
 $("start-game").addEventListener("click", () => {
   const assignment = { black: setup.black, white: setup.white };
-  // CPU戦は人間が主役。2人戦は選んだmainId。
-  const mainRef = setup.mode === "cpu" ? setup.black
-    : (assignment.black.id === setup.mainId ? assignment.black : assignment.white);
-  const mainColor = assignment.black.id === mainRef.id ? BLACK : WHITE;
-  startMatch({ assignment, mainColor, mode: setup.mode, level: setup.level, hints: setup.hints });
+  startMatch({ assignment, mode: setup.mode, level: setup.level, hints: setup.hints });
 });
 
 // ============ 対局 ============
@@ -146,23 +129,19 @@ function refForColor(color) {
 }
 
 function renderPanels() {
-  const mainColor = match.mainColor;
-  // bottom = 主役、top = 相手（相手側は180°反転して向かいから読める）
-  fillPanel($("panel-bottom"), mainColor, true);
-  fillPanel($("panel-top"), mainColor === BLACK ? WHITE : BLACK, false);
+  // 対面プレイ前提：下＝黒(先攻)、上＝白(後攻・向かいから読めるよう180°反転)
+  fillPanel($("panel-bottom"), BLACK, false);
+  fillPanel($("panel-top"), WHITE, true);
 }
 
-function fillPanel(el, color, isMain) {
+function fillPanel(el, color, flip) {
   const ref = refForColor(color);
   const isTurn = !state.over && state.current === color;
-  el.className = "panel-player"
-    + (isMain ? " main" : " dim")
-    + (isTurn ? " turn" : "")
-    + (isMain ? "" : " flip");
+  el.className = "panel-player" + (isTurn ? " turn" : "") + (flip ? " flip" : "");
   el.innerHTML = `
     <div class="pp-left">
       <span class="disc-mini ${color === BLACK ? "black" : "white"}"></span>
-      <span class="pp-name">${escapeHtml(ref.name)}${isMain ? '<span class="badge-main">★主役</span>' : ""}</span>
+      <span class="pp-name">${escapeHtml(ref.name)}</span>
     </div>
     <span class="pp-count">${count(state.board, color)}</span>`;
 }
@@ -283,15 +262,11 @@ async function finishGame() {
 }
 
 function showResult(res) {
-  const mainColor = match.mainColor;
-  const mainCount = mainColor === BLACK ? res.black : res.white;
-  const oppCount = mainColor === BLACK ? res.white : res.black;
   const rt = $("result-text");
   if (res.winner === BLACK || res.winner === WHITE) {
-    const mainWon = (res.winner === mainColor);
     const winnerRef = refForColor(res.winner);
     rt.textContent = match.mode === "cpu"
-      ? (mainWon ? "あなたの勝ち！" : "CPUの勝ち")
+      ? (winnerRef.kind !== "cpu" ? "あなたの勝ち！" : "CPUの勝ち")
       : `${winnerRef.name}の勝ち！`;
   } else {
     rt.textContent = "引き分け";
@@ -300,14 +275,11 @@ function showResult(res) {
   $("overlay-result").classList.add("active");
 }
 
-// もう一回：設定維持・先攻後攻を入替（主役の色も追従）
+// もう一回：設定維持。2人戦は先攻後攻を入替（公平に回す）、CPU戦は据え置き。
 $("rematch").addEventListener("click", () => {
   $("overlay-result").classList.remove("active");
-  // 同じ主役を維持したまま黒白を入れ替える（先攻後攻を公平に回す）
-  const mainRef = refForColor(match.mainColor);
-  const assignment = swapColors(match.assignment);
-  const mainColor = assignment.black.id === mainRef.id ? BLACK : WHITE;
-  startMatch({ ...match, assignment, mainColor });
+  const assignment = match.mode === "cpu" ? match.assignment : swapColors(match.assignment);
+  startMatch({ ...match, assignment });
 });
 $("to-menu").addEventListener("click", () => {
   $("overlay-result").classList.remove("active");

@@ -299,3 +299,12 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 逆転演出が要らない／「裏返し後にエフェクトが出た」バグ→ 正体は reversal 演出が後段(めくり後)に着手点で発火していたもの。reversalの演出(applyEffects case)と音(EVENT_SOUND/SFX_FILESのreversal)を削除。これで裏返し後の発火も解消（main側はplayEvent/applyEffectsともreversalがno-opになる）
 - 四隅の黒線が見えない→ 黒(INK)線を主役級に：太さ0.12→0.18、長さ最大3.4→5.0、飛距離・寿命(560ms)increase、opacityをゆっくり。配列を黒主体[INK×3,GOLD,INK,DEEP]・本数28に、金粒子は26→14に減らして黒を埋もれさせない
 - 円が綺麗すぎる→ makeWavyRingの歪みを大幅強化(振幅0.34/0.22/0.16/0.12・高調波7/11/17/29・seg160)でトゲのある星型に。CDPスクショ(jit_980)で黒い放射線＋ジャギジャギ星型を確認
+
+### R5 UI全面リデザイン＋主役概念の撤去（2026-06-04）
+- メインプレイヤー概念をコードから完全撤去：setup.mainId/syncMainChoices/seg-main(HTML)/field-main、match.mainColor、start-game・renderPanels・showResult・rematchのmain依存を削除。grep で main.js/HTMLとも残存ゼロ確認
+  - renderPanels：下=黒(先攻)/上=白(後攻・180°反転)固定。turn時は金枠ハイライト。主役バッジ/dimは廃止
+  - showResult：CPU戦の勝敗判定を mainColor基準→ refForColor(winner).kind!=="cpu" に（rematchで先後入替してもブレない）
+  - rematch：2人戦は swapColors で先後入替、CPU戦は据え置き
+- ビジュアルを黒×金ダークラグジュアリーに刷新（index.html <style> 全面差替）：見出しは明朝(var(--serif))・金グラデ、本文サンセリフ。btn-primary=金グラデ＋黒文字、btn-sub/controls=黒地金枠、card/panel=黒地金枠、seg選択=金塗り、結果カード=金枠＋金グロー、チェックボックス accent-color=金。theme-color #0a0a0b
+- 旧2D描画用CSS（.board/.cell/.disc/.face/.banner/.particle/.flash/.star/shake等）を一掃（描画はthree.jsのみ）
+- 検証：scripts/shot-ui.mjs でメニュー/設定/対局/結果をスクショ。明朝金ロゴ・主役UI消滅・黒金統一・エラーなしを確認。テスト40 green

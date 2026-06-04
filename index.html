@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f172a">
+<meta name="theme-color" content="#0a0a0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="リバーシ">
@@ -11,17 +11,22 @@
 <link rel="apple-touch-icon" href="./icons/icon-180.png">
 <title>リバーシ</title>
 <style>
+  /* ダークラグジュアリー（黒×金）。見出しは明朝、本文はサンセリフ。 */
   :root {
-    --felt1: #2a8a5b; --felt2: #1f7a4d; --line: #134a32;
-    --wood1: #6b4423; --wood2: #4a2e16;
-    --bg: #0f172a; --panel: #1e293b; --panel2:#273449;
-    --text: #e8eef5; --muted:#9fb0c3; --accent: #38bdf8; --gold:#ffd54a;
+    --bg:#0a0a0b; --bg2:#000000;
+    --panel:#15130d; --panel2:#1c190f; --line:#3a3320;
+    --text:#ece3cf; --muted:#9c9276;
+    --gold:#d9b75d; --gold-deep:#b8902f; --gold-bright:#f0d98a; --ink:#1a1305;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","YuMincho",serif;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html,body { height: 100%; }
   body {
     margin: 0; min-height: 100%;
-    background: radial-gradient(circle at 50% 0%, #16233c, var(--bg));
+    background:
+      radial-gradient(120% 80% at 50% -10%, #1b1710 0%, transparent 55%),
+      radial-gradient(circle at 50% 120%, #14110a 0%, var(--bg) 60%),
+      var(--bg2);
     color: var(--text);
     font-family: "Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif;
     user-select: none; -webkit-user-select: none;
@@ -30,144 +35,80 @@
   }
   .screen { display: none; width: 100%; max-width: 520px; padding: 18px; }
   .screen.active { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-  h1.logo { margin: 6px 0; font-size: 34px; letter-spacing: 8px; font-weight: 800;
-    background: linear-gradient(180deg,#fff,#9fc4e6); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .subtitle { color: var(--muted); font-size: 13px; margin-top: -8px; }
+
+  /* 見出し（明朝・金） */
+  h1.logo, h2, .result-card .big, .stat-block h3 { font-family: var(--serif); font-weight: 600; }
+  h1.logo { margin: 10px 0 2px; font-size: 42px; letter-spacing: 12px; padding-left: 12px;
+    background: linear-gradient(180deg,#f7e6b0 0%,#d9b75d 45%,#a9802a 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 2px 8px rgba(217,183,93,.25)); }
+  .subtitle { color: var(--muted); font-size: 12px; letter-spacing:1px; margin-top: 2px; }
+  h2 { font-size: 20px; color: var(--gold-bright); letter-spacing:2px; margin:4px; }
 
   button { font-family: inherit; cursor: pointer; border: none; border-radius: 12px; }
-  .btn-primary { background: linear-gradient(180deg,#4cc2f5,#2aa0e0); color:#06283d; font-weight:800; font-size:17px; padding:15px 22px; width:100%; box-shadow:0 4px 0 #1d7fb8; }
-  .btn-primary:active { transform: translateY(2px); box-shadow:0 2px 0 #1d7fb8; }
-  .btn-sub { background: var(--panel2); color: var(--text); font-weight:700; font-size:15px; padding:13px 18px; width:100%; }
+  .btn-primary { background: linear-gradient(180deg,#e8cd7e,#c69a36 60%,#b8902f);
+    color: var(--ink); font-weight:800; font-size:17px; letter-spacing:1px; padding:15px 22px; width:100%;
+    border:1px solid #f0d98a; box-shadow:0 3px 0 #7d6220, 0 8px 20px rgba(0,0,0,.5); }
+  .btn-primary:active { transform: translateY(2px); box-shadow:0 1px 0 #7d6220, 0 4px 12px rgba(0,0,0,.5); }
+  .btn-sub { background:#13110b; color: var(--gold-bright); font-weight:700; font-size:15px; padding:13px 18px; width:100%;
+    border:1px solid var(--line); }
+  .btn-sub:active { background:#1c190f; }
   .btn-row { display:flex; gap:10px; width:100%; }
   .btn-row > button { flex:1; }
-  .menu-list { display:flex; flex-direction:column; gap:12px; width:100%; max-width:340px; }
+  .menu-list { display:flex; flex-direction:column; gap:12px; width:100%; max-width:340px; margin-top:8px; }
 
-  .card { background: var(--panel); border-radius:16px; padding:16px; width:100%; }
-  .card h2 { margin:0 0 12px; font-size:16px; }
+  .card { background: linear-gradient(180deg,#15130d,#100e08); border:1px solid var(--line);
+    border-radius:16px; padding:16px; width:100%; box-shadow:0 10px 30px rgba(0,0,0,.5); }
   .field { margin-bottom:14px; }
   .field > label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
   .seg { display:flex; gap:8px; flex-wrap:wrap; }
-  .seg button { background:var(--panel2); color:var(--text); padding:10px 14px; font-size:14px; border:2px solid transparent; }
-  .seg button.sel { border-color: var(--accent); color:#fff; background:#21506e; }
+  .seg button { background:#100e08; color:var(--text); padding:10px 14px; font-size:14px; border:1px solid var(--line); }
+  .seg button.sel { border-color: var(--gold-bright); color:var(--ink); font-weight:800;
+    background: linear-gradient(180deg,#e8cd7e,#b8902f); }
   .toggle { display:flex; gap:8px; align-items:center; font-size:14px; }
-  input[type=text]{ width:100%; padding:11px; border-radius:10px; border:1px solid #33445c; background:#0e1726; color:var(--text); font-size:15px; font-family:inherit; }
+  input[type=checkbox]{ accent-color: var(--gold); width:16px; height:16px; }
+  input[type=text]{ width:100%; padding:11px; border-radius:10px; border:1px solid var(--line); background:#0c0a06; color:var(--text); font-size:15px; font-family:inherit; }
+  input[type=text]:focus{ outline:none; border-color:var(--gold); }
 
   /* --- 対局画面 --- */
   .panel-player { display:flex; align-items:center; justify-content:space-between; width:100%; max-width:460px;
-    background:var(--panel); border-radius:12px; padding:10px 14px; border:2px solid transparent; transition:.25s; }
+    background: linear-gradient(180deg,#15130d,#100e08); border-radius:12px; padding:10px 14px;
+    border:1px solid var(--line); transition:.25s; }
   .panel-player.flip { transform: rotate(180deg); }
-  .panel-player.main { border-color: var(--gold); box-shadow:0 0 14px rgba(255,213,74,.45); }
-  .panel-player.dim { opacity:.55; }
-  .panel-player.turn { background:#21506e; }
+  .panel-player.turn { border-color: var(--gold); box-shadow:0 0 16px rgba(217,183,93,.4); background:#1c190f; }
   .pp-left { display:flex; align-items:center; gap:10px; }
   .pp-name { font-weight:700; font-size:15px; }
-  .badge-main { font-size:11px; background:var(--gold); color:#3a2a00; padding:2px 7px; border-radius:8px; font-weight:800; margin-left:6px; }
-  .pp-count { font-size:22px; font-variant-numeric:tabular-nums; font-weight:800; }
-  .disc-mini{ width:22px;height:22px;border-radius:50%; }
-  .disc-mini.black{ background:radial-gradient(circle at 35% 30%,#555,#000);}
-  .disc-mini.white{ background:radial-gradient(circle at 35% 30%,#fff,#bbb);}
+  .pp-count { font-size:24px; font-variant-numeric:tabular-nums; font-weight:800; color:var(--gold-bright); }
+  .disc-mini{ width:22px;height:22px;border-radius:50%; box-shadow:inset 0 0 0 1px rgba(217,183,93,.35); }
+  .disc-mini.black{ background:radial-gradient(circle at 35% 30%,#4a4a4a,#000);}
+  .disc-mini.white{ background:radial-gradient(circle at 35% 30%,#fff,#cfcabb);}
 
-  #message{ min-height:20px; font-size:14px; color:var(--accent); }
+  #message{ min-height:20px; font-size:14px; color:var(--gold); letter-spacing:1px; }
 
-  .board-wrap{ position:relative; width:min(92vw,460px); height:min(92vw,460px); }
+  .board-wrap{ position:relative; width:min(92vw,460px); height:min(92vw,460px);
+    border-radius:10px; box-shadow:0 16px 44px rgba(0,0,0,.6); }
   #board3d{ position:absolute; inset:0; }
-  .board{
-    position:absolute; inset:0;
-    display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
-    gap:0; padding:12px; border-radius:14px;
-    background:
-      /* フェルトの織り目（SVGノイズ） */
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.16'/%3E%3C/svg%3E"),
-      radial-gradient(120% 120% at 70% 85%, rgba(0,30,18,.55), transparent 60%),
-      radial-gradient(130% 130% at 30% 15%, rgba(255,255,255,.10), transparent 55%),
-      linear-gradient(150deg,#2f955f,#1d7048 70%,#175c3b);
-    background-blend-mode: overlay, normal, screen, normal;
-    /* 木目フレーム（SVGノイズを縦に伸ばして年輪風に） */
-    border:14px solid transparent;
-    border-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.14' numOctaves='4' seed='7'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.26  0 0 0 0 0.12  0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%235a3618'/%3E%3Crect width='100%25' height='100%25' filter='url(%23w)' opacity='0.9'/%3E%3C/svg%3E") 28 round;
-    box-shadow:0 16px 40px rgba(0,0,0,.55), inset 0 0 60px rgba(0,0,0,.4),
-      inset 0 2px 6px rgba(255,255,255,.08);
-  }
-  /* 盤面の四隅を少し暗く（ビネット） */
-  .board::after{ content:""; position:absolute; inset:12px; border-radius:6px; pointer-events:none;
-    box-shadow: inset 0 0 50px rgba(0,0,0,.45); }
-  .cell{ position:relative; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-  .cell::before{ content:""; position:absolute; inset:0; box-shadow: inset 0 0 0 1px rgba(8,40,26,.85); }
-
-  /* 星（打点）：盤の (2,2)(2,6)(6,2)(6,6) の交点に置く */
-  .star{ position:absolute; width:9px; height:9px; border-radius:50%;
-    background:rgba(6,30,20,.85); transform:translate(-50%,-50%); z-index:2; pointer-events:none;
-    box-shadow:0 1px 1px rgba(255,255,255,.12); }
-
-  /* 立体めくり石（フリップカード方式：disc に perspective を持たせる） */
-  .disc{ width:84%; height:84%; position:relative; z-index:1; perspective:560px; }
-  .disc.pop{ animation:pop .24s ease; }
-  @keyframes pop{ 0%{transform:scale(.1);} 70%{transform:scale(1.12);} 100%{transform:scale(1);} }
-  .d3{ position:absolute; inset:0; transform-style:preserve-3d;
-    transition: transform .5s cubic-bezier(.45,.05,.3,1); will-change:transform; }
-  .board.instant .d3{ transition:none; }
-  /* 回転中に少し浮き上がらせて立体感を強調 */
-  .d3.b{ transform: rotateY(0deg) translateZ(0); }
-  .d3.w{ transform: rotateY(180deg) translateZ(0); }
-  .face{ position:absolute; inset:0; border-radius:50%;
-    backface-visibility:hidden; -webkit-backface-visibility:hidden;
-    box-shadow:0 4px 7px rgba(0,0,0,.5), inset 0 -3px 6px rgba(0,0,0,.45),
-      inset 0 3px 5px rgba(255,255,255,.18); }
-  /* 表＝黒 */
-  .face.front{ background:radial-gradient(circle at 36% 26%, #7a7a7a 0%, #2a2a2a 42%, #050505 100%); }
-  /* 裏＝白（180°回しておく） */
-  .face.back{ transform: rotateY(180deg);
-    background:radial-gradient(circle at 36% 26%, #ffffff 0%, #e2e2e2 45%, #b3b3b3 100%); }
-  /* ツヤ（スペキュラのハイライト） */
-  .face::after{ content:""; position:absolute; left:22%; top:14%; width:34%; height:24%;
-    border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.75), transparent 70%);
-    filter:blur(1px); }
-  .face.front::after{ background:radial-gradient(circle, rgba(255,255,255,.45), transparent 70%); }
-
-  .cell.hint::after{ content:""; width:24%; height:24%; border-radius:50%;
-    background:radial-gradient(circle, rgba(255,255,255,.55), rgba(255,255,255,.15));
-    z-index:1; animation:pulse 1.3s infinite; }
-  @keyframes pulse{ 0%,100%{opacity:.4; transform:scale(.85);} 50%{opacity:.8; transform:scale(1);} }
-
-  .board.shake{ animation:shake .35s; }
-  @keyframes shake{ 0%,100%{transform:translate(0,0);} 20%{transform:translate(-6px,3px);} 40%{transform:translate(6px,-3px);} 60%{transform:translate(-4px,-2px);} 80%{transform:translate(4px,2px);} }
-
-  /* 演出レイヤー */
-  .fx-layer{ position:absolute; inset:0; pointer-events:none; overflow:visible; z-index:5; }
-  .banner{ position:absolute; left:50%; top:42%; transform:translate(-50%,-50%);
-    font-weight:900; font-size:34px; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,.7);
-    animation:banner 1.4s ease forwards; white-space:nowrap; }
-  .banner.combo{ color:#7CFC98; font-size:40px; }
-  .banner.corner{ color:var(--gold); }
-  .banner.reversal{ color:var(--accent); font-size:44px; }
-  .banner.win{ color:var(--gold); font-size:48px; }
-  .banner.lose{ color:#ff8a8a; }
-  .banner.small{ font-size:24px; color:var(--muted); }
-  @keyframes banner{ 0%{opacity:0; transform:translate(-50%,-50%) scale(.5);} 20%{opacity:1; transform:translate(-50%,-50%) scale(1.1);} 75%{opacity:1; transform:translate(-50%,-60%) scale(1);} 100%{opacity:0; transform:translate(-50%,-80%) scale(1);} }
-  .particle{ position:absolute; width:9px; height:9px; border-radius:50%; pointer-events:none;
-    animation:particle .7s ease-out forwards; }
-  @keyframes particle{ to{ transform:translate(var(--dx),var(--dy)) scale(.2); opacity:0; } }
-  .flash{ position:absolute; inset:0; animation:flash .35s ease-out forwards; }
-  @keyframes flash{ from{opacity:.6;} to{opacity:0;} }
 
   .controls{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; }
-  .controls button{ background:var(--panel2); color:var(--text); font-weight:700; padding:11px 16px; font-size:14px; }
+  .controls button{ background:#13110b; color:var(--gold-bright); font-weight:700; padding:11px 16px; font-size:14px;
+    border:1px solid var(--line); border-radius:12px; }
   .sound-row{ display:flex; gap:16px; font-size:13px; color:var(--muted); }
 
   /* 結果オーバーレイ */
-  .overlay{ position:fixed; inset:0; background:rgba(5,10,20,.82); display:none; align-items:center; justify-content:center; z-index:20; padding:20px; }
+  .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.86); display:none; align-items:center; justify-content:center; z-index:20; padding:20px; }
   .overlay.active{ display:flex; }
-  .result-card{ background:var(--panel); border-radius:18px; padding:26px; width:100%; max-width:360px; text-align:center; }
-  .result-card .big{ font-size:30px; font-weight:900; margin-bottom:6px; }
-  .result-card .score{ font-size:18px; color:var(--muted); margin-bottom:20px; }
+  .result-card{ background: linear-gradient(180deg,#171410,#0c0a06); border:1px solid var(--gold-deep);
+    border-radius:18px; padding:28px; width:100%; max-width:360px; text-align:center;
+    box-shadow:0 0 40px rgba(217,183,93,.18), 0 20px 50px rgba(0,0,0,.6); }
+  .result-card .big{ font-size:32px; margin-bottom:8px; color:var(--gold-bright); letter-spacing:2px; }
+  .result-card .score{ font-size:18px; color:var(--muted); margin-bottom:22px; font-variant-numeric:tabular-nums; }
 
   /* 戦績 */
-  .stat-block{ background:var(--panel2); border-radius:12px; padding:14px; margin-bottom:12px; }
-  .stat-block h3{ margin:0 0 8px; font-size:15px; }
+  .stat-block{ background:#13110b; border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .stat-block h3{ margin:0 0 8px; font-size:16px; color:var(--gold-bright); letter-spacing:1px; }
   .stat-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center; }
   .stat-grid .k{ font-size:11px; color:var(--muted); }
-  .stat-grid .v{ font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .stat-grid .v{ font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--gold-bright); }
   .prof-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
   .prof-row input{ flex:1; }
   .empty-note{ color:var(--muted); font-size:13px; text-align:center; padding:10px; }
@@ -198,10 +139,6 @@
       <div class="field" id="field-white">
         <label>白（後攻）<span class="disc-mini white" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span></label>
         <div class="seg" id="seg-white"></div>
-      </div>
-      <div class="field" id="field-main">
-        <label>主役（BGM・演出の基準。★で表示）</label>
-        <div class="seg" id="seg-main"></div>
       </div>
       <div class="field" id="field-level" style="display:none">
         <label>CPUの強さ</label>
