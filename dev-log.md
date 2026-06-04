@@ -308,3 +308,18 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - ビジュアルを黒×金ダークラグジュアリーに刷新（index.html <style> 全面差替）：見出しは明朝(var(--serif))・金グラデ、本文サンセリフ。btn-primary=金グラデ＋黒文字、btn-sub/controls=黒地金枠、card/panel=黒地金枠、seg選択=金塗り、結果カード=金枠＋金グロー、チェックボックス accent-color=金。theme-color #0a0a0b
 - 旧2D描画用CSS（.board/.cell/.disc/.face/.banner/.particle/.flash/.star/shake等）を一掃（描画はthree.jsのみ）
 - 検証：scripts/shot-ui.mjs でメニュー/設定/対局/結果をスクショ。明朝金ロゴ・主役UI消滅・黒金統一・エラーなしを確認。テスト40 green
+
+### R6 PWA更新＋旧2D層削除＋通し検証（2026-06-04）
+- 旧2D描画層を削除：src/render.js / src/effects.js（コードからは未import、sw.jsのprecacheにのみ残存していた）
+- 未使用音源を整理：逆転(reversal.wav)・一方的BGM(bgm_oneside.wav)の生成をgen-audio.mjsから削除し、wavファイルも削除
+- sw.js更新：CACHE v10→v11、ASSETSから render.js/effects.js/reversal.wav を除去（big_swoosh.wav は追加済み）。全38件の実在を自動チェック＝欠落0（precache addAllの404リスクなし）
+- 通し検証：
+  - node --test 40件green
+  - scripts/verify-cdp.mjs：四隅ヒットストップ/大量返し演出、エラーなし
+  - scripts/shot-ui.mjs：メニュー/設定/対局/結果の黒金UI、エラーなし
+  - scripts/play-check.mjs（新規）：実際にcanvasをクリック→doMove通し。黒2/白2→(2,3)着手で黒4/白1、(3,3)が黒へ裏返り、手番が白へ、placed/flipped確認、エラーなし
+- 検証用スクリプト（verify-cdp/shot-ui/play-check）はNode25のグローバルWebSocketで自作した使い捨てCDPドライバ。今後の回帰確認に再利用可
+
+### 現在地
+- R1〜R6＋R4.5(①〜④)＋実機フィードバック8巡 すべて完了・コミット済み。テスト40 green
+- アプリは `node scripts/devserver.mjs`（:8765）で起動、本番はGitHub Pages想定（SWはlocalhost無効/本番のみ有効）

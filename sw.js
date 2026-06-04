@@ -1,5 +1,5 @@
 // オフライン対応のサービスワーカー（アプリシェルをキャッシュ）。
-const CACHE = "reversi-v10";
+const CACHE = "reversi-v11";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,14 +8,12 @@ const ASSETS = [
   "./src/rules.js",
   "./src/game.js",
   "./src/evaluate.js",
-  "./src/render.js",
   "./src/events.js",
   "./src/notation.js",
   "./src/match.js",
   "./src/stats.js",
   "./src/exporter.js",
   "./src/audio.js",
-  "./src/effects.js",
   "./src/storage.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -38,7 +36,6 @@ const ASSETS = [
   "./audio/flip_land.wav",
   "./audio/bell.wav",
   "./audio/big_swoosh.wav",
-  "./audio/reversal.wav",
   "./audio/fanfare_win.wav",
   "./audio/fanfare_lose.wav",
   "./audio/bgm_normal.wav",

@@ -167,15 +167,7 @@ const SR = 44100;
   console.log("✔", writeWav("bell.wav", normalize(wet, 0.7), SR));
 }
 
-// 逆転：駆け上がるスイープ
-{
-  const b = blank(0.6, SR);
-  for (let i = 0; i < b.length; i++) {
-    const t = i / SR, f = 300 + 900 * (t / 0.6);
-    b[i] += Math.sin(TAU * f * t) * 0.3 * Math.exp(-t / 0.4);
-  }
-  console.log("✔", writeWav("reversal.wav", b, SR));
-}
+// （逆転演出は廃止したため reversal.wav は生成しない）
 
 // 勝利ファンファーレ（長調アルペジオ・brass様）
 {
@@ -239,35 +231,5 @@ const BR = 32000;
   console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.85), BR));
 }
 
-// 終盤・一方的：重低音の圧迫感（行進曲ではない）。深いドローン＋ゆっくり迫る重い脈動＋不穏なうねり。
-{
-  const L = 9.6, b = blank(L, BR);
-  // 重低音ドローン（Gのパワー：G1=49, D2=73.4）＝地鳴りのような土台
-  for (let i = 0; i < b.length; i++) {
-    const t = i / BR;
-    const trem = 0.85 + 0.15 * Math.sin(TAU * 0.18 * t);
-    b[i] += Math.sin(TAU * 49 * t) * 0.55 * trem;     // sub
-    b[i] += Math.sin(TAU * 73.4 * t) * 0.30 * trem;   // 5th
-    b[i] += (2 * ((49 * t) % 1) - 1) * 0.10 * trem;   // sawで倍音の厚み
-  }
-  // 不穏なうねり：低ブラス様G2=98に半音上Ab2=104を僅かに重ねて軋ませる（menace）。ゆっくりswell
-  for (const [f, g] of [[98, 0.16], [104, 0.06]]) {
-    for (let i = 0; i < b.length; i++) {
-      const t = i / BR, swell = 0.4 + 0.6 * (0.5 - 0.5 * Math.cos(TAU * (t / L))); // 山なりに高まる
-      b[i] += (2 * ((f * t) % 1) - 1) * g * swell;
-    }
-  }
-  // ゆっくり迫る重い脈動（1.6秒ごとのDOOM）：ピッチが沈むsine＋短いブラスの圧
-  for (let k = 0; k * 1.6 < L; k++) {
-    const t0 = k * 1.6, s0 = (t0 * BR) | 0;
-    for (let j = 0; j < (0.5 * BR) | 0 && s0 + j < b.length; j++) {
-      const t = j / BR;
-      b[s0 + j] += Math.sin(TAU * (70 - 35 * (t / 0.5)) * t) * 0.5 * Math.exp(-t / 0.28); // 沈むDOOM
-    }
-    tone(b, BR, { type: "saw", freq: 98, t0, dur: 0.6, gain: 0.18, decay: 0.4 }); // 圧のスタブ
-  }
-  lowpass(b, 1500, BR); // 高域を削って重く暗く
-  console.log("✔", writeWav("bgm_oneside.wav", normalize(seamless(b, BR), 0.95), BR));
-}
 
 console.log("→ 出力先:", OUT);
