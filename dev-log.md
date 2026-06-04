@@ -267,3 +267,9 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - ④揺れが視認できなかった→ jitterStone を振幅大(STONE_R*0.55/0.14)・周波数低め(5.5)・DUR460msに強化、角のカメラシェイクも0.22/420msへ。CDP再検証 jitterMaxAbs 0.0223→0.2388、arcXに第1相急減衰→第2相緩減衰のメリハリ確認
 - ③BGM移行がまだ早い→ XFADE_SEC 3.0→4.0秒
 - placeの「コツ」が安っぽい→ gen-audio.mjsで頭=高く澄んだアタック(2400/3200Hz)＋尻=重量感のある低音アクセント(120/80Hz・やや遅延)を追加。place.wav再生成(0.28s/peak0.97/rms0.193)。AUDIO_VER 8→9
+
+### 実機フィードバック反映（2026-06-04 その3）
+- 「石が全く揺れない」根本原因＝jitter第1相 exp(-9p) が約40ms(2〜3フレーム)で減衰し速すぎて不可視だった。減衰を exp(-4.5p)・DUR650ms・周波数約7Hzに緩め、複数フレーム揺れるよう改善。CDPスクショ3枚(/tmp/jit_*.png)で角石の位置変化＋カメラシェイクを実描画レベルで確認
+- 「四隅/大量返しはフリーズ→演出後にめくり」→ animateMoveに special(=isCorner||isBig)・FREEZE_MS=760ms・onImpact統合を導入。着地でフリーズ→光(＋音)→演出が終わる頃にめくり開始。main.jsで isBig=flippedCount>=5、onImpactでcorner/bigの光を着地に同期、後段applyEffects/playEventからは handledInAnim(corner/bigFlip)を除外
+- BGM移行をさらに緩く XFADE_SEC 4.0→6.0秒
+- コツ音：低音アクセントの主張を下げ(gain 0.5/0.30→0.28/0.14)、軽い残響を追加(reverb decay0.8/mix0.16)、バッファ0.28→0.42sでtail確保。AUDIO_VER 9→10

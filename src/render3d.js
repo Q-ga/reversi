@@ -338,6 +338,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   const FLIP_LIFT = STONE_R * 3.2;   // ② めくりの浮上は全体的に高く
   const HOVER = STONE_R * 2.4;       // ① 出現時の空中静止高さ
   const HOLD_MS = 135;               // 溜め時間（着手・めくり号砲の目安）
+  const FREEZE_MS = 760;             // ④ 角/大量返し：着地後フリーズ（演出が終わる頃）→めくり
 
   // ① 着手の溜め：盤の真上に出現(フッ)→空中で静止(溜め)→落下＋着地(コツ)。
   function placeWithAnticipation(group, color, { onAppear, onLand } = {}) {
@@ -412,14 +413,14 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
 
   // ④ ヒットストップの揺れ：置石を盤面内で小刻みに振動（二重指数の減衰でメリハリ）。
-  // はっきり視認できるよう振幅大きめ・周波数低めに。隣マスへはめり込まない範囲。
+  // 第1相の減衰を緩め、複数フレームにわたって大きく揺れる＝はっきり視認できる速さに。
   function jitterStone(group) {
     const restX = group.position.x, restZ = group.position.z;
-    const DUR = 460 * SPEED;
-    const A1 = STONE_R * 0.55, A2 = STONE_R * 0.14; // 第1相(大・速)＋第2相(小・遅)
+    const DUR = 650 * SPEED;
+    const A1 = STONE_R * 0.5, A2 = STONE_R * 0.16; // 第1相(大・速)＋第2相(小・遅)
     addTween(DUR, (p) => {
-      const amp = A1 * Math.exp(-9 * p) + A2 * Math.exp(-2.4 * p);
-      const ph = p * Math.PI * 2 * 5.5; // ゆっくりめのビリビリ（残像にならない速さ）
+      const amp = A1 * Math.exp(-4.5 * p) + A2 * Math.exp(-1.6 * p);
+      const ph = p * Math.PI * 2 * 4.5; // 約7Hz＝1揺れ8〜9フレームで目に見える
       group.position.x = restX + Math.sin(ph) * amp;
       group.position.z = restZ + Math.cos(ph * 1.13) * amp;
     }, () => { group.position.x = restX; group.position.z = restZ; });
@@ -427,7 +428,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
 
   // 連鎖めくり（① 着手の溜め → ④ 角ならヒットストップ → ② 号砲＋波状フォロワー）。
   function animateMove(prevBoard, nextBoard, move, color, cbs = {}) {
-    const { onAppear, onLand, onFlipLift, onFlipLand, onCornerHit } = cbs;
+    const { onAppear, onLand, onFlipLift, onFlipLand, onImpact, isBig } = cbs;
     return new Promise((resolve) => {
       const placed = placeStone(move.r, move.c, color, false);
 
@@ -445,16 +446,17 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
         if (line.length) groups.push(line);
       }
       const isCorner = (move.r === 0 || move.r === SIZE - 1) && (move.c === 0 || move.c === SIZE - 1);
+      const special = isCorner || isBig; // ④ 角／大量返しはフリーズ→演出後にめくり
 
       placeWithAnticipation(placed.group, color, {
         onAppear,
         onLand: () => {
           if (onLand) onLand();
-          if (isCorner) {                          // ④ ヒットストップ（光・音・揺れを一点に同期）
-            if (onCornerHit) onCornerHit();
-            jitterStone(placed.group);
-            shakeCamera(0.22, 420); // 盤全体にもはっきり衝撃
-            setTimeout(runFlips, 280 * SPEED);     // 停止が収まってからめくり開始
+          if (special) {
+            if (onImpact) onImpact();                 // 光＋音を着地の一点に同期
+            if (isCorner) jitterStone(placed.group);  // 揺れは四隅のみ
+            shakeCamera(isCorner ? 0.22 : 0.16, isCorner ? 460 : 380);
+            setTimeout(runFlips, FREEZE_MS * SPEED);   // フリーズ：演出が終わってからめくり
           } else {
             runFlips();
           }

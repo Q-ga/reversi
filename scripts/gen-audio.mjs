@@ -87,9 +87,9 @@ function blank(sec, sr) { return new Float32Array((sec * sr) | 0); }
 // ===================== 効果音（44.1kHz） =====================
 const SR = 44100;
 
-// 着石「コツ」：今の打撃をベースに、頭=高く澄んだアタック、尻=重量感のある低音アクセントを足す。
+// 着石「コツ」：今の打撃をベースに、頭=高く澄んだアタック、尻=控えめな低音アクセント＋軽い残響。
 {
-  const b = blank(0.28, SR);
+  const b = blank(0.42, SR); // reverbの残響が切れないよう長めに確保
   // 明るいトランジェント（中高域）＝小型スピーカーでも抜ける
   for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.8 * Math.exp(-t / 0.005); }
   lowpass(b, 7000, SR);
@@ -100,10 +100,11 @@ const SR = 44100;
   tone(b, SR, { type: "sine", freq: 950, t0: 0, dur: 0.05, gain: 0.6, decay: 0.018 }); // カチッ
   tone(b, SR, { type: "sine", freq: 520, t0: 0, dur: 0.08, gain: 0.45, decay: 0.03 }); // 木質
   tone(b, SR, { type: "sine", freq: 230, t0: 0, dur: 0.12, gain: 0.35, decay: 0.05 }); // ボディ
-  // 尻：重量感のある低音アクセント（やや遅れて「ドゥン」）＝着地の重みを後乗せ
-  tone(b, SR, { type: "sine", freq: 120, t0: 0.018, dur: 0.17, gain: 0.5, attack: 0.004, decay: 0.09 });
-  tone(b, SR, { type: "sine", freq: 80,  t0: 0.022, dur: 0.20, gain: 0.30, attack: 0.005, decay: 0.12 });
-  console.log("✔", writeWav("place.wav", normalize(b, 0.97), SR));
+  // 尻：低音アクセント（控えめに・やや遅れて「ドゥン」）＝重みは出すが主張は抑える
+  tone(b, SR, { type: "sine", freq: 120, t0: 0.018, dur: 0.17, gain: 0.28, attack: 0.004, decay: 0.085 });
+  tone(b, SR, { type: "sine", freq: 80,  t0: 0.022, dur: 0.20, gain: 0.14, attack: 0.005, decay: 0.11 });
+  const wet = reverb(b, SR, { decay: 0.8, mix: 0.16 }); // 軽い残響で安っぽさを消す
+  console.log("✔", writeWav("place.wav", normalize(wet, 0.97), SR));
 }
 
 // 返し(1)：スッと持ち上げる音（短くスッキリ。washy/リバーブ感なし）

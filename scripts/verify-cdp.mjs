@@ -1,12 +1,13 @@
-// CDPでアニメ軌跡を数値検証する使い捨てスクリプト。
-// 前提：devserver.mjs が :8765 で起動中。Chromeをheadlessで上げてCDP接続し、
-// window.__view（?slow時に露出）越しに animateMove を直接叩いて y/x をサンプリングする。
+// CDPでアニメ軌跡を数値検証＋実描画スクショ確認する使い捨てスクリプト。
+// 前提：devserver.mjs が :8765 で起動中。Chrome headless(WebGL)をCDP接続し、
+// window.__view（?slow時に露出）越しに animateMove を直叩きして y/x をサンプリングし、
+// 四隅ジッタ中のスクリーンショットを /tmp に保存して実描画でも揺れているか確認する。
 import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
 
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9222;
-const URL = "http://localhost:8765/?slow=4";
-
+const URL = "http://localhost:8765/?slow=2";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const chrome = spawn(CHROME, [
@@ -28,89 +29,88 @@ async function getWsUrl() {
   }
   throw new Error("CDP target not found");
 }
-
 function cdp(ws) {
-  let id = 0;
-  const pending = new Map();
+  let id = 0; const pending = new Map();
   ws.addEventListener("message", (ev) => {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
   });
   return (method, params = {}) => new Promise((res) => {
-    const myId = ++id;
-    pending.set(myId, res);
+    const myId = ++id; pending.set(myId, res);
     ws.send(JSON.stringify({ id: myId, method, params }));
   });
 }
+const evalIn = async (send, expr, awaitPromise = true) => {
+  const r = await send("Runtime.evaluate", { expression: expr, awaitPromise, returnByValue: true });
+  if (r.result?.exceptionDetails) console.log("EXC:", JSON.stringify(r.result.exceptionDetails.exception));
+  return r.result?.result?.value;
+};
 
-const IN_PAGE = `
-async function run() {
-  const sleep = ms => new Promise(r=>setTimeout(r,ms));
-  const errors = [];
-  window.addEventListener('error', e => errors.push(String(e.message||e.error)));
-  document.querySelector('[data-mode="2p"]').click();
-  await sleep(60);
-  document.getElementById('start-game').click();
-  await sleep(400);
-  const v = window.__view;
-  if (!v) return { ok:false, why:'no __view', errors };
-  const EMPTY=0, BLACK=1, WHITE=2;
-  const clone = b => b.map(r=>r.slice());
-  const init = Array.from({length:8},()=>Array(8).fill(EMPTY));
-  init[3][3]=WHITE; init[3][4]=BLACK; init[4][3]=BLACK; init[4][4]=WHITE;
-  // ① 着手の溜め ＋ ② 号砲: 黒(2,3)→(3,3)が返る
-  const nextA = clone(init); nextA[2][3]=BLACK; nextA[3][3]=BLACK;
-  let appeared=false, landed=false, liftCount=0, landCount=0;
-  const arcY=[];
-  const pA = v.animateMove(init, nextA, {r:2,c:3}, BLACK, {
-    onAppear:()=>appeared=true, onLand:()=>landed=true,
-    onFlipLift:()=>liftCount++, onFlipLand:()=>landCount++, onCornerHit:null
-  });
-  for (let i=0;i<26;i++){ const e=v.stoneMap.get('2,3'); arcY.push(e?+e.group.position.y.toFixed(3):null); await sleep(80); }
+const SETUP = `(async()=>{
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  window.__err=[]; window.addEventListener('error',e=>window.__err.push(String(e.message||e.error)));
+  document.querySelector('[data-mode="2p"]').click(); await sleep(60);
+  document.getElementById('start-game').click(); await sleep(400);
+  const v=window.__view; if(!v) return {ok:false};
+  const EMPTY=0,BLACK=1; const clone=b=>b.map(r=>r.slice());
+  const init=Array.from({length:8},()=>Array(8).fill(0));
+  init[3][3]=2;init[3][4]=1;init[4][3]=1;init[4][4]=2;
+  // ① 着手の溜め＋② 号砲：黒(2,3)→(3,3)
+  const nextA=clone(init); nextA[2][3]=1; nextA[3][3]=1;
+  window.__A={appeared:false,landed:false,lift:0,land:0,arcY:[]};
+  const pA=v.animateMove(init,nextA,{r:2,c:3},1,{
+    onAppear:()=>window.__A.appeared=true,onLand:()=>window.__A.landed=true,
+    onFlipLift:()=>window.__A.lift++,onFlipLand:()=>window.__A.land++});
+  for(let i=0;i<22;i++){const e=v.stoneMap.get('2,3');window.__A.arcY.push(e?+e.group.position.y.toFixed(3):null);await sleep(70);}
   await pA;
-  // ④ 四隅ヒットストップ: 黒(0,0)、(0,1)が返る想定(bracket (0,2))
-  const prevC = clone(nextA); prevC[0][2]=BLACK; prevC[0][1]=WHITE;
-  const nextC = clone(prevC); nextC[0][0]=BLACK; nextC[0][1]=BLACK;
-  let cornerHit=false;
-  const baseX = v.cellToWorld(0,0).x;
-  const pC = v.animateMove(prevC, nextC, {r:0,c:0}, BLACK, {
-    onAppear:()=>{}, onLand:()=>{}, onFlipLift:()=>{}, onFlipLand:()=>{},
-    onCornerHit:()=>cornerHit=true
-  });
-  const arcX=[];
-  await sleep(1530);            // 出現+溜め+落下を飛ばし、着地直後(第1相)からサンプル
-  for (let i=0;i<22;i++){ const e=v.stoneMap.get('0,0'); arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null); await sleep(40); }
-  await pC;
-  const ys = arcY.filter(x=>x!=null);
-  return { ok:true, appeared, landed, liftCount, landCount, cornerHit,
-    restY: v.STONE_H/2, hoverMax: Math.max(...ys), endY: ys[ys.length-1],
-    arcY, jitterMaxAbs: Math.max(...arcX.map(x=>Math.abs(x||0))), arcX, errors };
-}
-run()`;
+  return {ok:true,restY:v.STONE_H/2};
+})()`;
+
+const CORNER = `(()=>{
+  const v=window.__view; const clone=b=>b.map(r=>r.slice());
+  const init=Array.from({length:8},()=>Array(8).fill(0));
+  init[3][3]=2;init[3][4]=1;init[4][3]=1;init[4][4]=2; init[2][3]=1; init[3][3]=1;
+  const prevC=clone(init); prevC[0][2]=1; prevC[0][1]=2;
+  const nextC=clone(prevC); nextC[0][0]=1; nextC[0][1]=1;
+  window.__C={hit:false,arcX:[]}; const baseX=v.cellToWorld(0,0).x;
+  v.animateMove(prevC,nextC,{r:0,c:0},1,{onImpact:()=>window.__C.hit=true,isBig:false});
+  (async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    for(let i=0;i<45;i++){const e=v.stoneMap.get('0,0');window.__C.arcX.push(e?+(e.group.position.x-baseX).toFixed(4):null);await sleep(40);}
+    window.__C.done=true;})();
+  return {started:true};
+})()`;
 
 (async () => {
   try {
-    const wsUrl = await getWsUrl();
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(await getWsUrl());
     await new Promise((r) => ws.addEventListener("open", r, { once: true }));
     const send = cdp(ws);
-    await send("Runtime.enable");
-    await send("Page.enable");
-    // ロード完了待ち
+    await send("Runtime.enable"); await send("Page.enable");
     await sleep(1500);
-    const res = await send("Runtime.evaluate", {
-      expression: IN_PAGE, awaitPromise: true, returnByValue: true,
-    });
-    if (res.result?.exceptionDetails) {
-      console.log("PAGE EXCEPTION:", JSON.stringify(res.result.exceptionDetails, null, 2));
+    const a = await evalIn(send, SETUP);
+    console.log("SETUP:", JSON.stringify(a));
+    const A = await evalIn(send, "window.__A");
+    console.log("① arcY:", JSON.stringify(A.arcY));
+    console.log("① appeared/landed/lift/land:", A.appeared, A.landed, A.lift, A.land);
+
+    // 四隅：アニメ開始→着地(約758ms@slow2)後のジッタ中にスクショ3枚
+    await evalIn(send, CORNER, false);
+    const shots = [];
+    for (const t of [820, 980, 1180]) {
+      await sleep(t - (shots.at(-1)?.t ?? 0));
+      const r = await send("Page.captureScreenshot", { format: "png" });
+      const file = `/tmp/jit_${t}.png`;
+      writeFileSync(file, Buffer.from(r.result.data, "base64"));
+      shots.push({ t, file });
     }
-    const v = res.result?.result?.value;
-    console.log(JSON.stringify(v, null, 2));
+    await sleep(900);
+    const C = await evalIn(send, "window.__C");
+    console.log("④ cornerHit:", C.hit, "jitterMaxAbs:", Math.max(...C.arcX.map((x) => Math.abs(x || 0))).toFixed(4));
+    console.log("④ arcX:", JSON.stringify(C.arcX.slice(0, 24)));
+    console.log("shots:", shots.map((s) => s.file).join(" "));
+    const err = await evalIn(send, "window.__err");
+    console.log("errors:", JSON.stringify(err));
     ws.close();
-  } catch (e) {
-    console.error("ERR", e);
-  } finally {
-    chrome.kill();
-    process.exit(0);
-  }
+  } catch (e) { console.error("ERR", e); }
+  finally { chrome.kill(); process.exit(0); }
 })();

@@ -27,7 +27,7 @@ let currentBgm = null;
 let bgmRunning = false;
 
 // 音源を更新したらここを上げる（Service Worker等の旧キャッシュを確実に回避）
-const AUDIO_VER = 9;
+const AUDIO_VER = 10;
 // モジュール読込時にファイルを先読み（decodeはinit後）
 for (const [k, url] of Object.entries({ ...SFX_FILES, ...BGM_FILES })) {
   fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => { rawBuffers[k] = ab; }).catch(() => {});
@@ -105,7 +105,7 @@ export function startBgm(state = "normal") {
 }
 
 // 等パワークロスフェード（③ 急な転換を約3秒で緩やかに）
-const XFADE_SEC = 4.0;     // クロスフェード時間（実時間）
+const XFADE_SEC = 6.0;     // クロスフェード時間（実時間・かなり緩やかに）
 const BGM_LEVEL = 0.9;     // BGMの定常音量
 function eqPowerCurves(level, steps = 64) {
   const out = new Float32Array(steps); // フェードアウト：level→0
