@@ -323,3 +323,10 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 ### 現在地
 - R1〜R6＋R4.5(①〜④)＋実機フィードバック8巡 すべて完了・コミット済み。テスト40 green
 - アプリは `node scripts/devserver.mjs`（:8765）で起動、本番はGitHub Pages想定（SWはlocalhost無効/本番のみ有効）
+
+### GitHub Pages 公開（2026-06-04）
+- 公開URL：https://q-ga.github.io/reversi/ （リポジトリ Q-ga/reversi・public）
+- 手順：gh repo create reversi --public --source=. --push → gh api でPages有効化(branch main/path /) 。git pushは `gh auth setup-git` 後にhttpsで通る（noreply identity維持）
+- manifest相対パス(./)でサブパス/reversi/配信OK。theme/background色を#0a0a0bに更新。faviconリンク追加(icons/icon-192.png)で/favicon.icoの404を解消。SW CACHE v12
+- 検証(scripts/prod-check.mjs・新規プロファイル)：title=リバーシ、SW登録+active、メニュー表示、コンソールエラーなし。主要アセット全200
+- iPhone導入：Safariで上記URL→共有→「ホーム画面に追加」→アイコン起動で全画面・オフライン。音は最初のタップ後から鳴る（iOS制約・実装済み）
