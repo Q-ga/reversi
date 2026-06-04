@@ -74,10 +74,10 @@ export function playFlip(i = 0) {
 }
 
 const EVENT_SOUND = {
-  corner: ["bell", 0.9],
+  corner: ["bell", 0.85],
   reversal: ["reversal", 0.9],
-  "gameover-win": ["fanfare_win", 1.0],
-  "gameover-lose": ["fanfare_lose", 1.0],
+  gameover: ["fanfare_win", 1.0],
+  "gameover-draw": ["fanfare_lose", 0.7],
   shutout: ["fanfare_win", 1.0],
 };
 export function playEvent(tag) {

@@ -212,9 +212,9 @@ async function doMove(r, c) {
   // 局面に応じてBGM切替（2段階：通常/終盤接戦/終盤一方的）
   audio.setBgm(bgmState(state.board));
   // スポット演出はR4でシーン内に実装。判定だけ算出しておく。
-  const tags = detectEvents(prev, state, { r, c }, flippedCount, match.mainColor);
-  for (const tag of tags) audio.playEvent(tag); // 演出音（ビジュアルはR4でview側に）
-  if (view.applyEffects) view.applyEffects(tags, { r, c, flippedCount, color });
+  const tags = detectEvents(prev, state, { r, c }, flippedCount);
+  for (const tag of tags) audio.playEvent(tag); // 演出音（効果音チャンネル）
+  view.applyEffects(tags, { r, c, flippedCount, color }); // 演出ビジュアル（シーン内bloom）
 
   view.renderHints(state, match.hints);
   renderPanels();

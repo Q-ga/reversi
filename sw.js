@@ -1,5 +1,5 @@
 // オフライン対応のサービスワーカー（アプリシェルをキャッシュ）。
-const CACHE = "reversi-v8";
+const CACHE = "reversi-v10";
 const ASSETS = [
   "./",
   "./index.html",
@@ -23,6 +23,15 @@ const ASSETS = [
   "./src/bgm.js",
   "./src/render3d.js",
   "./vendor/three.module.js",
+  "./vendor/jsm/postprocessing/EffectComposer.js",
+  "./vendor/jsm/postprocessing/RenderPass.js",
+  "./vendor/jsm/postprocessing/ShaderPass.js",
+  "./vendor/jsm/postprocessing/MaskPass.js",
+  "./vendor/jsm/postprocessing/UnrealBloomPass.js",
+  "./vendor/jsm/shaders/CopyShader.js",
+  "./vendor/jsm/postprocessing/OutputPass.js",
+  "./vendor/jsm/shaders/LuminosityHighPassShader.js",
+  "./vendor/jsm/shaders/OutputShader.js",
   "./textures/board.png",
   "./audio/place.wav",
   "./audio/flip_lift.wav",

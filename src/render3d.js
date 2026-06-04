@@ -3,6 +3,10 @@
 // 真上見下ろしカメラ、ソフトシャドウ。クリックはレイキャストでマスに変換。
 // R1: 静的配置＋クリック。めくりアニメ(R2)/演出(R4)は後続で差し込む。
 import * as THREE from "three";
+import { EffectComposer } from "../vendor/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "../vendor/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "../vendor/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "../vendor/jsm/postprocessing/OutputPass.js";
 import { SIZE, EMPTY, BLACK, legalMoves } from "./rules.js";
 
 const BOARD = 10; // 盤プレーンのワールドサイズ
@@ -41,6 +45,13 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
   camera.position.set(0, 18, 1.6);
   camera.lookAt(0, 0, 0);
+
+  // bloom後処理（明るい演出だけが発光してにじむ。盤/石は閾値以下で発光しない）
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.7, 0.55, 0.9);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass()); // トーンマッピング＋sRGB変換（盤が黒くならないように最終変換）
 
   // ライト：均一に当てて中央ハイライト(=球っぽさ)を作らない。
   // 石の陰影は面テクスチャ(中央暗→縁明)で出し、影は接地用にだけ落とす。
@@ -209,6 +220,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     const w = container.clientWidth;
     const h = container.clientHeight || w;
     renderer.setSize(w, h, false);
+    composer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
@@ -236,13 +248,88 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     return t;
   }
 
+  // --- スポット演出（シーン内・bloomで発光。テキストは出さない） ---
+  const fxGroup = new THREE.Group();
+  scene.add(fxGroup);
+  const GOLD = 0xffd06a, GREEN = 0x9ff0a8;
+  const partGeo = new THREE.SphereGeometry(STONE_R * 0.14, 8, 8);
+  const ringGeo = new THREE.RingGeometry(STONE_R * 0.55, STONE_R * 0.8, 40);
+  const flashGeo = new THREE.PlaneGeometry(BOARD, BOARD);
+  // 発光素材（toneMapped=falseで閾値を超えさせ、確実にbloomさせる）
+  function glowMat(hex, mul = 2.2) {
+    const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(mul), transparent: true, toneMapped: false });
+    return m;
+  }
+
+  function spawnParticles(x, z, hex = GOLD, n = 18, spread = 1.6) {
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(partGeo, glowMat(hex));
+      m.position.set(x, STONE_H, z);
+      fxGroup.add(m);
+      const ang = Math.random() * Math.PI * 2, sp = spread * (0.4 + Math.random());
+      const vx = Math.cos(ang) * sp, vz = Math.sin(ang) * sp, vy = 1.3 + Math.random() * 1.6;
+      addTween(700 + Math.random() * 250, (p) => {
+        m.position.set(x + vx * p, STONE_H + vy * p - 2.2 * p * p, z + vz * p);
+        m.scale.setScalar(Math.max(0.02, 1 - p));
+        m.material.opacity = 1 - p;
+      }, () => { fxGroup.remove(m); m.material.dispose(); });
+    }
+  }
+  function spawnRing(x, z, hex = GOLD) {
+    const m = new THREE.Mesh(ringGeo, glowMat(hex, 1.8));
+    m.material.side = THREE.DoubleSide;
+    m.rotation.x = -Math.PI / 2; m.position.set(x, 0.04, z);
+    fxGroup.add(m);
+    addTween(620, (p) => { const s = 1 + p * 5.5; m.scale.set(s, s, s); m.material.opacity = 0.85 * (1 - p); },
+      () => { fxGroup.remove(m); m.material.dispose(); });
+  }
+  function flashBoard(hex = GOLD, peak = 0.4) {
+    const m = new THREE.Mesh(flashGeo, glowMat(hex, 1.5));
+    m.material.side = THREE.DoubleSide; m.material.depthWrite = false;
+    m.rotation.x = -Math.PI / 2; m.position.set(0, 0.06, 0);
+    fxGroup.add(m);
+    addTween(600, (p) => { m.material.opacity = peak * Math.sin(Math.min(p, 1) * Math.PI); },
+      () => { fxGroup.remove(m); m.material.dispose(); });
+  }
+  let shaking = false;
+  function shakeCamera(intensity = 0.13, dur = 280) {
+    if (shaking) return;
+    shaking = true;
+    const bx = camera.position.x, bz = camera.position.z;
+    addTween(dur, (p) => {
+      const k = intensity * (1 - p);
+      camera.position.x = bx + (Math.random() * 2 - 1) * k;
+      camera.position.z = bz + (Math.random() * 2 - 1) * k;
+    }, () => { camera.position.x = bx; camera.position.z = bz; shaking = false; });
+  }
+  function celebrate() {
+    flashBoard(GOLD, 0.5);
+    for (let k = 0; k < 6; k++) {
+      const x = (Math.random() - 0.5) * BOARD * 0.85, z = (Math.random() - 0.5) * BOARD * 0.85;
+      spawnParticles(x, z, GOLD, 14, 1.5);
+    }
+  }
+  function applyEffects(tags, ctx = {}) {
+    const pos = ctx.r != null ? cellToWorld(ctx.r, ctx.c) : { x: 0, z: 0 };
+    for (const tag of tags) {
+      switch (tag) {
+        case "corner": spawnParticles(pos.x, pos.z, GOLD, 24, 1.8); spawnRing(pos.x, pos.z); break;
+        case "bigFlip": spawnParticles(pos.x, pos.z, GREEN, 16, 1.4); shakeCamera(0.12, 260); break;
+        case "reversal": flashBoard(GOLD, 0.35); shakeCamera(0.1, 240); break;
+        case "gameover":
+        case "shutout": celebrate(); break;
+        default: break; // pass / lastCell / gameover-draw は音のみ（控えめ）
+      }
+    }
+  }
+
   // 描画ループ
   let raf = 0;
   function loop() {
     raf = requestAnimationFrame(loop);
     const now = performance.now();
     for (const t of tweens) if (t.update(now)) tweens.delete(t);
-    renderer.render(scene, camera);
+    composer.render();
   }
   loop();
 
@@ -307,6 +394,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     renderHints,
     clearHints,
     animateMove,
+    applyEffects,
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); container.removeChild(renderer.domElement); },
     THREE, scene, camera, renderer, stoneMap, cellToWorld, STONE_R, STONE_H,
   };
