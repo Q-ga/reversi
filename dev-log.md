@@ -330,3 +330,9 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - manifest相対パス(./)でサブパス/reversi/配信OK。theme/background色を#0a0a0bに更新。faviconリンク追加(icons/icon-192.png)で/favicon.icoの404を解消。SW CACHE v12
 - 検証(scripts/prod-check.mjs・新規プロファイル)：title=リバーシ、SW登録+active、メニュー表示、コンソールエラーなし。主要アセット全200
 - iPhone導入：Safariで上記URL→共有→「ホーム画面に追加」→アイコン起動で全画面・オフライン。音は最初のタップ後から鳴る（iOS制約・実装済み）
+
+### 登録上限を10人に拡張＋直接対決を2人選択式に（2026-06-04）
+- storage.js MAX_PROFILES 2→10。既存IndexedDBデータは保持（上限が広がるだけ）
+- 戦績の「直接対決」を、登録2人以上で2つのselectから相手を選び headToHead を表示する方式に変更（main.js openStats）。同一人物選択時は警告。index.htmlにselect/.h2h-pickのCSS追加。headToHead(stats.js)は任意2人で動くため変更なし
+- SW CACHE v13→v14
+- 検証 scripts/check-profiles.mjs：3人登録成功(2人超許可)、直接対決UI・選択肢3・結果表示・変更更新・同一人物警告・エラー0。テスト40 green

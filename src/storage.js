@@ -1,7 +1,7 @@
 // IndexedDB によるローカル保存（プロフィール／対局記録）。ブラウザ専用。
 const DB_NAME = "reversi";
 const DB_VERSION = 1;
-export const MAX_PROFILES = 2;
+export const MAX_PROFILES = 10;
 
 let dbPromise = null;
 

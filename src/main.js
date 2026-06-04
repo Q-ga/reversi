@@ -335,17 +335,38 @@ async function openStats() {
       </div>`;
     body.appendChild(block);
   }
-  if (profiles.length === 2) {
-    const h = headToHead(games, profiles[0].id, profiles[1].id);
+  // 直接対決：登録が2人以上なら、2人を選んでその対戦成績を表示
+  if (profiles.length >= 2) {
     const block = document.createElement("div");
     block.className = "stat-block";
+    const opts = profiles.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
     block.innerHTML = `<h3>直接対決</h3>
-      <div class="stat-grid">
-        <div><div class="k">${escapeHtml(profiles[0].name)}</div><div class="v">${h.winsA}</div></div>
-        <div><div class="k">引分</div><div class="v">${h.draws}</div></div>
-        <div><div class="k">${escapeHtml(profiles[1].name)}</div><div class="v">${h.winsB}</div></div>
-      </div>`;
+      <div class="h2h-pick">
+        <select id="h2h-a">${opts}</select>
+        <span class="h2h-x">×</span>
+        <select id="h2h-b">${opts}</select>
+      </div>
+      <div id="h2h-result"></div>`;
     body.appendChild(block);
+    const selA = block.querySelector("#h2h-a"), selB = block.querySelector("#h2h-b");
+    selB.selectedIndex = 1; // 既定で別の2人
+    const renderH2H = () => {
+      const idA = selA.value, idB = selB.value;
+      const out = block.querySelector("#h2h-result");
+      if (idA === idB) { out.innerHTML = '<div class="empty-note">違う2人を選んでください</div>'; return; }
+      const h = headToHead(games, idA, idB);
+      const nameA = profiles.find((p) => p.id === idA).name;
+      const nameB = profiles.find((p) => p.id === idB).name;
+      out.innerHTML = `<div class="stat-grid">
+        <div><div class="k">${escapeHtml(nameA)}</div><div class="v">${h.winsA}</div></div>
+        <div><div class="k">引分</div><div class="v">${h.draws}</div></div>
+        <div><div class="k">${escapeHtml(nameB)}</div><div class="v">${h.winsB}</div></div>
+      </div>
+      <div class="empty-note">対戦数 ${h.games}</div>`;
+    };
+    selA.addEventListener("change", renderH2H);
+    selB.addEventListener("change", renderH2H);
+    renderH2H();
   }
   showScreen("stats");
 }
