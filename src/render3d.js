@@ -7,6 +7,7 @@ import { EffectComposer } from "../vendor/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "../vendor/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "../vendor/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "../vendor/jsm/postprocessing/OutputPass.js";
+import { RoomEnvironment } from "../vendor/jsm/environments/RoomEnvironment.js";
 import { SIZE, EMPTY, BLACK, legalMoves } from "./rules.js";
 
 const BOARD = 10; // 盤プレーンのワールドサイズ
@@ -43,7 +44,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
 
   // カメラ：真上から見下ろし（ごく僅かに寄せて浮上した石が分かる程度）
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-  camera.position.set(0, 18, 1.6);
+  camera.position.set(0, 18, 0.6); // ほぼ真上（約2°）。余計なチルトを抑えつつ石の厚みは僅かに見せる
   camera.lookAt(0, 0, 0);
 
   // bloom後処理（明るい演出だけが発光してにじむ。盤/石は閾値以下で発光しない）
@@ -53,12 +54,12 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   composer.addPass(bloom);
   composer.addPass(new OutputPass()); // トーンマッピング＋sRGB変換（盤が黒くならないように最終変換）
 
-  // ライト：均一に当てて中央ハイライト(=球っぽさ)を作らない。
-  // 石の陰影は面テクスチャ(中央暗→縁明)で出し、影は接地用にだけ落とす。
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x39414c, 1.0));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const key = new THREE.DirectionalLight(0xffffff, 0.5);
-  key.position.set(-3, 13, 4);
+  // ライト：レフ板のように面で全体を均一に照らす。方向光は弱く・ほぼ真上にして、
+  // 盤面の明暗ムラを作らず「石の接地影」だけを担わせる。石の厚みの陰影は面テクスチャで出す。
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x39414c, 1.15));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const key = new THREE.DirectionalLight(0xffffff, 0.3); // 弱め＝盤の方向ムラを出さず接地影だけ
+  key.position.set(1.5, 18, 1.5);                        // ほぼ真上。影が石の真下に短く落ちる
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.near = 1;
@@ -66,7 +67,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   const sc = key.shadow.camera;
   sc.left = -7; sc.right = 7; sc.top = 7; sc.bottom = -7;
   key.shadow.bias = -0.0006;
-  key.shadow.radius = 5;
+  key.shadow.radius = 7; // よりソフトな接地影
   scene.add(key);
 
   // 盤（画像を貼った薄い箱）
@@ -126,9 +127,50 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     return g;
   }
 
-  // 合法手ヒント（淡い金の薄板）
-  const hintMat = new THREE.MeshBasicMaterial({ color: 0xffd54a, transparent: true, opacity: 0.32 });
-  const hintGeo = new THREE.CircleGeometry(STONE_R * 0.32, 24);
+  // 合法手ヒント＝つやガラスのドーム（半透明・クリアコート・内外で微色相差）。
+  // 石は球っぽさを避ける設計なので、映り込み用envMapはシーン全体でなくヒント専用に持たせる。
+  const hintPmrem = new THREE.PMREMGenerator(renderer);
+  const hintEnv = hintPmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  // ドーム形状：上半球を薄く潰した凸レンズ。裾は今より広げる（0.32→0.46）。
+  const HINT_BASE_R = STONE_R * 0.54;   // 裾の半径
+  const HINT_FLAT = 0.34;               // 高さ＝裾半径×この比（薄いドーム）
+  function makeDomeGeo() {
+    const g = new THREE.SphereGeometry(HINT_BASE_R, 40, 18, 0, Math.PI * 2, 0, Math.PI / 2);
+    g.scale(1, HINT_FLAT, 1);
+    // 頂点カラーで内外の色差＋濁り（不均一）を作る：裾=深い琥珀 → 頂=シャンパン金
+    const pos = g.attributes.position;
+    const maxY = HINT_BASE_R * HINT_FLAT;
+    const top = new THREE.Color(0xf0c060), bot = new THREE.Color(0x331f05);
+    const tmp = new THREE.Color();
+    const colors = [];
+    for (let i = 0; i < pos.count; i++) {
+      const t = Math.min(1, Math.max(0, pos.getY(i) / maxY)); // 0=裾 → 1=頂
+      tmp.copy(bot).lerp(top, t);
+      // わずかな揺らぎでガラスの濁り・不均一を出す（色相と明度を微オフセット）
+      const n = (Math.random() - 0.5);
+      tmp.offsetHSL(n * 0.012, n * 0.05, n * 0.05);
+      colors.push(tmp.r, tmp.g, tmp.b);
+    }
+    g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    return g;
+  }
+  const hintGeo = makeDomeGeo();
+  // 【外ドーム】暗めの透明ガラス。濃淡（頂点カラー）と透明感を担い、発光はごく控えめ。
+  // 反射(clearcoat/envMap)は「不透明な光沢」になり盤を隠すため使わない。
+  // 素の半透明＋頂点カラーの濃淡（中心=明るい金／縁=暗い琥珀）で、盤を透かしつつ立体に見せる。
+  const hintMatBase = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.34, // 盤がしっかり透ける薄さ
+    depthWrite: false, side: THREE.FrontSide,
+  });
+  const HINT_BASE_OPACITY = 0.34;
+  // 【中心コア】明るい金の小円。ライト非依存(MeshBasic)で確実に灯り、視認の核になる。
+  // 外ドーム(濃淡金)と色を変えることで内外の色差＝立体感も出す。
+  const hintCoreGeo = new THREE.CircleGeometry(STONE_R * 0.11, 24);
+  const hintCoreMatBase = new THREE.MeshBasicMaterial({
+    color: 0xf5bf55, transparent: true, opacity: 0.4, depthWrite: false, // 中心の薄い灯り（盤も少し透ける）
+  });
+  const HINT_CORE_OPACITY = 0.4;
   const hints = new THREE.Group();
   scene.add(hints);
 
@@ -178,17 +220,28 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
 
   function renderHints(state, showHints) {
-    hints.clear();
+    clearHints();
     if (state.over || !showHints) return;
+    let i = 0;
     for (const [r, c] of legalMoves(state.board, state.current)) {
-      const m = new THREE.Mesh(hintGeo, hintMat);
+      const grp = new THREE.Group();           // 外ドーム＋中心コアの2層
+      const dome = new THREE.Mesh(hintGeo, hintMatBase.clone());       // ジオメトリは共有・マテリアルは個別
+      const core = new THREE.Mesh(hintCoreGeo, hintCoreMatBase.clone());
+      core.rotation.x = -Math.PI / 2;          // 水平に寝かせる
+      core.position.y = HINT_BASE_R * HINT_FLAT * 0.92; // ドーム頂点付近に浮かせる
+      grp.add(dome, core);
       const { x, z } = cellToWorld(r, c);
-      m.position.set(x, 0.02, z);
-      m.rotation.x = -Math.PI / 2;
-      hints.add(m);
+      grp.position.set(x, 0.01, z);            // 盤面に接地（ドームはy+方向に立ち上がる）
+      grp.userData.phase = i * 0.7;            // 位相をずらして一斉に揃わない＝不均一に
+      hints.add(grp);
+      i++;
     }
   }
-  function clearHints() { hints.clear(); }
+  // 個別cloneしたマテリアルを破棄してから消す（ジオメトリは共有なので残す）。
+  function clearHints() {
+    for (const grp of hints.children) for (const m of grp.children) m.material.dispose();
+    hints.clear();
+  }
 
   // レイキャストでクリック→マス
   const raycaster = new THREE.Raycaster();
@@ -379,9 +432,24 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     raf = requestAnimationFrame(loop);
     const now = performance.now();
     for (const t of tweens) if (t.update(now)) tweens.delete(t);
+    breatheHints(now);
     composer.render();
   }
   loop();
+
+  // ヒントのドームをごく控えめに呼吸させる（透明度＋スケール）。位相をずらして不均一に。
+  function breatheHints(now) {
+    if (hints.children.length === 0) return;
+    const ts = now * 0.001;
+    for (const grp of hints.children) {
+      const b = Math.sin(ts * 2.4 + grp.userData.phase); // -1..1
+      const s = 1 + 0.05 * b;
+      grp.scale.set(s, s, s);
+      const [, core] = grp.children;
+      // ドームは屈折ガラス（opacityは透過に使わない）のでスケールのみ呼吸。中心コアは灯りを呼吸。
+      core.material.opacity = HINT_CORE_OPACITY + 0.06 * b;
+    }
+  }
 
   // 浮上量・溜めの定数
   const LIFT = STONE_R * 2.2;        // 着手ドロップインの基準高さ

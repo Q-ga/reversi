@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EMPTY, BLACK, WHITE } from "../src/rules.js";
 import { detectEvents } from "../src/events.js";
-import { swapColors, shouldRecord } from "../src/match.js";
+import { swapColors, shouldRecord, cpuAssignment } from "../src/match.js";
 
 const stateOf = (board, over = false, passed = false) => ({ board, over, passed });
 const emptyBoard = () => Array.from({ length: 8 }, () => Array(8).fill(EMPTY));
@@ -49,6 +49,13 @@ test("swapColors は黒白を入れ替える", () => {
   const b = { kind: "user", id: "b", name: "とも" };
   const swapped = swapColors({ black: a, white: b });
   assert.deepEqual(swapped, { black: b, white: a });
+});
+
+test("cpuAssignment: 先攻は人間が黒、後攻はCPUが黒", () => {
+  const human = { kind: "user", id: "a", name: "あつ" };
+  const cpu = { kind: "cpu", id: "cpu", name: "CPU（ふつう）" };
+  assert.deepEqual(cpuAssignment(human, cpu, true), { black: human, white: cpu });
+  assert.deepEqual(cpuAssignment(human, cpu, false), { black: cpu, white: human });
 });
 
 test("shouldRecord: 登録ユーザーが居れば記録、ゲスト対ゲスト/CPUは記録しない", () => {

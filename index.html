@@ -90,6 +90,20 @@
   .disc-mini.white{ background:radial-gradient(circle at 35% 30%,#fff,#cfcabb);}
 
   #message{ min-height:20px; font-size:14px; color:var(--gold); letter-spacing:1px; }
+  /* パス告知バナー（盤中央に重ねる）。中央を軽く暗くして金明朝の文字を浮かせる。 */
+  .pass-banner{ position:absolute; inset:0; z-index:5; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px; text-align:center;
+    background:radial-gradient(circle at center, rgba(6,5,3,.62) 0%, rgba(6,5,3,.30) 55%, rgba(6,5,3,0) 100%);
+    opacity:0; transform:scale(.90); pointer-events:none;
+    transition:opacity .22s ease, transform .22s ease; }
+  .pass-banner.show{ opacity:1; transform:scale(1); pointer-events:auto; }
+  .pass-banner .pb-main{ font-family:var(--serif); font-weight:600;
+    font-size:clamp(48px,17vw,84px); letter-spacing:.18em; padding-left:.18em;
+    color:var(--gold-bright);
+    text-shadow:0 0 22px rgba(240,217,138,.55), 0 3px 6px rgba(0,0,0,.65); }
+  .pass-banner .pb-sub{ font-size:14px; color:var(--gold); letter-spacing:1px; line-height:1.5;
+    background:rgba(8,7,4,.6); padding:6px 14px; border-radius:10px;
+    border:1px solid rgba(217,183,93,.35); text-shadow:0 1px 3px rgba(0,0,0,.7); }
 
   .board-wrap{ position:relative; width:min(92vw,460px); height:min(92vw,460px);
     border-radius:10px; box-shadow:0 16px 44px rgba(0,0,0,.6); }
@@ -139,8 +153,15 @@
     <h2 id="setup-title" style="margin:4px">対局の設定</h2>
     <div class="card">
       <div class="field" id="field-black">
-        <label>黒（先攻）<span class="disc-mini black" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span></label>
+        <label id="label-black">黒（先攻）<span class="disc-mini black" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span></label>
         <div class="seg" id="seg-black"></div>
+      </div>
+      <div class="field" id="field-turn" style="display:none">
+        <label>あなたの手番</label>
+        <div class="seg" id="seg-turn">
+          <button data-first="1" class="sel">先攻（黒）</button>
+          <button data-first="0">後攻（白）</button>
+        </div>
       </div>
       <div class="field" id="field-white">
         <label>白（後攻）<span class="disc-mini white" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span></label>
@@ -170,6 +191,11 @@
     <div id="message">　</div>
     <div class="board-wrap">
       <div id="board3d"></div>
+      <!-- パス告知（盤中央オーバーレイ）。自動で約1.2秒表示し、タップで即スキップ。 -->
+      <div id="pass-banner" class="pass-banner" aria-hidden="true">
+        <div class="pb-main">パス</div>
+        <div id="pass-sub" class="pb-sub"></div>
+      </div>
     </div>
     <div class="panel-player" id="panel-bottom"></div>
     <div class="controls">
@@ -196,7 +222,7 @@
 
   <!-- プロフィール -->
   <section id="screen-profiles" class="screen">
-    <h2 style="margin:4px">プロフィール（最大2人）</h2>
+    <h2 style="margin:4px">プロフィール（最大10人）</h2>
     <div class="card" id="profiles-body"></div>
     <button class="btn-sub" data-back="menu">メニューに戻る</button>
   </section>
@@ -207,7 +233,11 @@
       <div class="big" id="result-text">　</div>
       <div class="score" id="result-score">　</div>
       <div class="btn-row" style="flex-direction:column">
+        <!-- CPU戦：手番据え置きで再戦 -->
         <button class="btn-primary" id="rematch">もう一回</button>
+        <!-- 2人戦：先攻後攻の入替を選んで再戦 -->
+        <button class="btn-primary" id="rematch-swap">入れ替えて再戦</button>
+        <button class="btn-sub" id="rematch-same">そのまま再戦</button>
         <button class="btn-sub" id="to-menu">メニューに戻る</button>
       </div>
     </div>

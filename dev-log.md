@@ -336,3 +336,13 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 戦績の「直接対決」を、登録2人以上で2つのselectから相手を選び headToHead を表示する方式に変更（main.js openStats）。同一人物選択時は警告。index.htmlにselect/.h2h-pickのCSS追加。headToHead(stats.js)は任意2人で動くため変更なし
 - SW CACHE v13→v14
 - 検証 scripts/check-profiles.mjs：3人登録成功(2人超許可)、直接対決UI・選択肢3・結果表示・変更更新・同一人物警告・エラー0。テスト40 green
+
+## 2026-06-05 フリーズ修正・パス演出・CPU手番・再戦UI・ヒント刷新・盤ライティング
+- フリーズ真因：Web Audioのスケジューリング衝突（進行中の `setValueCurveAtTime`(6秒クロスフェード)に別操作が重なり `NotSupportedError`）が `doMove` 内で送出され `busy` が固着→合法手があっても盤が無反応に。対策＝audio.jsに `resetParam`(`cancelAndHoldAtTime`で進行中曲線を終端)を導入し全AudioParam操作を安全化＋main.js `doMove` を try/finally で包み `busy` を必ず解除（非必須の音声がゲーム入力をロックしない構造）
+- パス演出：盤中央に金明朝「パス」＋「○○（色）は打てる場所がありません」を約1.2秒・タップでスキップ。`doMove` から `await` で直列化し、CPUパス時の「自分が打ったのにCPUが動かず固まって見える」待ちぼうけも解消
+- CPU戦に先攻/後攻トグル（setup画面 field-turn。後攻＝CPUが黒で先着）。match.js に `cpuAssignment` 追加＋テスト。プロフィール表記「最大2人」→「最大10人」（index.html/storage.js）
+- 再戦：2人戦は「入れ替えて再戦／そのまま再戦」、CPU戦は「もう一回」をモードで出し分け（showResult）
+- ヒント刷新：単色フラット円→2層（外＝素の半透明ドーム＝頂点カラーで中心明・縁暗の濃淡・盤が透ける／中心＝金の小さな核）＋控えめな呼吸。反射(clearcoat/envMap)は盤を隠し、transmissionはこのcomposer構成で黒くなるため不使用→MeshBasicの素の半透明で透け優先
+- 盤の最下段が暗い問題：真因はカメラの余計なチルト(z 1.6→0.6＝約2°)と方向光のムラ。ライトをレフ板的に均一化（Hemisphere1.0→1.15／Ambient0.5→0.6／Directional0.5→0.3・ほぼ真上(1.5,18,1.5)・影radius5→7）。当初の頂点カラー補正は不自然なため撤去
+- SW CACHE v14→v15。`vendor/jsm/environments/RoomEnvironment.js`(ヒント専用envMap生成用)をASSETSに追加。テスト40→41 green（cpuAssignment追加）
+- 検証スクリプト：repro-freeze.mjs（2人戦60手・パス4回を固着0/例外0で完走）／check-pass-banner・check-cpu-turn・check-rematch（機能E2E）。見た目調整用 shot-* は確定後に削除

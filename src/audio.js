@@ -48,7 +48,24 @@ export function init() {
 export function setSfxEnabled(on) { sfxOn = on; }
 export function setBgmEnabled(on) {
   bgmOn = on;
-  if (bgmGain && ctx) bgmGain.gain.setTargetAtTime(on ? 0.7 : 0, ctx.currentTime, 0.05);
+  if (bgmGain && ctx) {
+    resetParam(bgmGain.gain, ctx.currentTime);
+    try { bgmGain.gain.setTargetAtTime(on ? 0.7 : 0, ctx.currentTime, 0.05); } catch {}
+  }
+}
+
+// AudioParam を安全に再スケジュールするための共通ヘルパ。
+// cancelScheduledValues は「過去に開始して進行中の」曲線を終端できず、直後の
+// setValueCurveAtTime / setTargetAtTime がその区間とオーバーラップして NotSupportedError を投げる。
+// cancelAndHoldAtTime なら現在値に固定して曲線を確実に終端できる。未対応環境は段階的に縮退し、
+// いかなる場合も例外を外へ漏らさない（音は非必須＝ゲーム進行をブロックさせない）。
+function resetParam(param, now) {
+  try {
+    const hold = param.cancelAndHoldAtTime || param.webkitCancelAndHoldAtTime;
+    if (hold) { hold.call(param, now); return; }
+  } catch {}
+  try { param.cancelScheduledValues(now); } catch {}
+  try { param.setValueAtTime(param.value, now); } catch {}
 }
 export function isSfxEnabled() { return sfxOn; }
 export function isBgmEnabled() { return bgmOn; }
@@ -60,7 +77,7 @@ function playBuffer(name, { rate = 1, gain = 1 } = {}) {
   src.playbackRate.value = rate;
   const g = ctx.createGain(); g.gain.value = gain;
   src.connect(g); g.connect(sfxGain);
-  src.start();
+  try { src.start(); } catch {}
 }
 
 // ---- 効果音 ----
@@ -128,11 +145,12 @@ export function setBgm(state, force = false) {
   if (!buffers[state]) { setTimeout(() => setBgm(state, force), 200); return; }
   const now = ctx.currentTime;
   const { out, inn } = eqPowerCurves(BGM_LEVEL);
-  // 既存トラックを等パワーでフェードアウト＆停止予約
+  // 既存トラックを等パワーでフェードアウト＆停止予約。
+  // resetParam で進行中の曲線を現在値に固定して終端 → 新しい曲線はオーバーラップせず投げない。
   for (const [name, tr] of Object.entries(bgmTracks)) {
     if (name !== state) {
-      tr.gain.gain.cancelScheduledValues(now);
-      try { tr.gain.gain.setValueCurveAtTime(out, now, XFADE_SEC); } catch { tr.gain.gain.setTargetAtTime(0, now, 1.0); }
+      resetParam(tr.gain.gain, now);
+      try { tr.gain.gain.setValueCurveAtTime(out, now, XFADE_SEC); } catch {}
       try { tr.src.stop(now + XFADE_SEC + 0.3); } catch {}
       delete bgmTracks[name];
     }
@@ -140,11 +158,11 @@ export function setBgm(state, force = false) {
   if (!bgmTracks[state]) bgmTracks[state] = startTrack(state);
   const tr = bgmTracks[state];
   if (tr) {
-    tr.gain.gain.cancelScheduledValues(now);
+    resetParam(tr.gain.gain, now);
     try {
       tr.gain.gain.setValueCurveAtTime(inn, now, XFADE_SEC);
       tr.gain.gain.setValueAtTime(BGM_LEVEL, now + XFADE_SEC); // フェード後は定常音量を維持
-    } catch { tr.gain.gain.setTargetAtTime(BGM_LEVEL, now, 1.0); }
+    } catch {}
   }
   currentBgm = state;
 }
@@ -154,7 +172,10 @@ export function stopBgm() {
   if (!ctx) return;
   const now = ctx.currentTime;
   for (const [name, tr] of Object.entries(bgmTracks)) {
-    tr.gain.gain.setTargetAtTime(0, now, 0.3);
+    // 進行中のクロスフェード曲線を終端してから停止フェード。これが無いと
+    // setTargetAtTime が曲線とオーバーラップして NotSupportedError を投げていた。
+    resetParam(tr.gain.gain, now);
+    try { tr.gain.gain.setTargetAtTime(0, now, 0.3); } catch {}
     try { tr.src.stop(now + 1.0); } catch {}
     delete bgmTracks[name];
   }

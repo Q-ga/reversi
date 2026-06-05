@@ -46,7 +46,7 @@ function reqResult(request) {
   return box;
 }
 
-// --- プロフィール（上限2人） ---
+// --- プロフィール（上限10人。MAX_PROFILES参照） ---
 export function listProfiles() {
   return tx("profiles", "readonly", (s) => reqResult(s.getAll()));
 }

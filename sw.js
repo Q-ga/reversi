@@ -1,5 +1,5 @@
 // オフライン対応のサービスワーカー（アプリシェルをキャッシュ）。
-const CACHE = "reversi-v14";
+const CACHE = "reversi-v15";
 const ASSETS = [
   "./",
   "./index.html",
@@ -30,6 +30,7 @@ const ASSETS = [
   "./vendor/jsm/postprocessing/OutputPass.js",
   "./vendor/jsm/shaders/LuminosityHighPassShader.js",
   "./vendor/jsm/shaders/OutputShader.js",
+  "./vendor/jsm/environments/RoomEnvironment.js",
   "./textures/board.png",
   "./audio/place.wav",
   "./audio/flip_lift.wav",

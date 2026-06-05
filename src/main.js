@@ -6,7 +6,7 @@ import { bgmState } from "./bgm.js";
 import { createBoardView } from "./render3d.js";
 import { detectEvents } from "./events.js";
 import { kifuFromMoves } from "./notation.js";
-import { swapColors, shouldRecord } from "./match.js";
+import { swapColors, shouldRecord, cpuAssignment } from "./match.js";
 import { statsForUser, headToHead } from "./stats.js";
 import { buildCSV, buildJSON } from "./exporter.js";
 import * as audio from "./audio.js";
@@ -19,7 +19,7 @@ const cpuRef = (level) => ({ kind: "cpu", id: "cpu", name: `CPU（${["", "かん
 
 // --- アプリ状態 ---
 let profiles = [];
-let setup = { mode: "2p", black: null, white: null, level: 2, hints: true };
+let setup = { mode: "2p", black: null, white: null, level: 2, hints: true, playerFirst: true };
 let match = null; // { assignment, mode, level, hints, startedAt, moves }
 let state = null;
 let view = null; // three.jsの盤ビュー（初回startMatchで生成し再利用）
@@ -52,24 +52,38 @@ document.querySelectorAll("[data-back]").forEach((b) =>
 // ============ セットアップ ============
 async function openSetup() {
   profiles = await listProfiles();
-  $("setup-title").textContent = setup.mode === "cpu" ? "CPUと対戦" : "2人で対戦";
-  $("field-level").style.display = setup.mode === "cpu" ? "" : "none";
+  const isCpu = setup.mode === "cpu";
+  $("setup-title").textContent = isCpu ? "CPUと対戦" : "2人で対戦";
+  $("field-level").style.display = isCpu ? "" : "none";
+  $("field-turn").style.display = isCpu ? "" : "none";
+  // CPU戦は黒/白固定でなく「あなた＝人間」＋手番トグルで決めるのでラベルを変える
+  $("label-black").innerHTML = isCpu
+    ? "あなた"
+    : '黒（先攻）<span class="disc-mini black" style="display:inline-block;vertical-align:middle;width:16px;height:16px;margin-left:4px"></span>';
 
-  // 選択候補：登録ユーザー＋ゲスト（CPU戦の白はCPU固定）
+  // 選択候補：登録ユーザー＋ゲスト
   const humanChoices = [...profiles.map((p) => ({ kind: "user", id: p.id, name: p.name })), GUEST];
 
-  // 既定値
+  // 既定値。CPU戦では setup.black に「人間プレイヤー」を保持し、黒白の割当ては開始時に手番で決める。
   setup.black = humanChoices[0];
-  setup.white = setup.mode === "cpu" ? cpuRef(setup.level) : (humanChoices[1] || GUEST);
+  setup.white = isCpu ? cpuRef(setup.level) : (humanChoices[1] || GUEST);
+  setup.playerFirst = true;
 
   renderSeg("seg-black", humanChoices, setup.black.id, (ref) => { setup.black = ref; });
-  if (setup.mode === "cpu") {
+  if (isCpu) {
     $("field-white").style.display = "none";
+    syncTurnSeg();
   } else {
     $("field-white").style.display = "";
     renderSeg("seg-white", humanChoices, setup.white.id, (ref) => { setup.white = ref; });
   }
   showScreen("setup");
+}
+
+// 手番トグル（先攻/後攻）の選択表示を setup.playerFirst に同期する。
+function syncTurnSeg() {
+  const seg = $("seg-turn");
+  [...seg.children].forEach((b) => b.classList.toggle("sel", (b.dataset.first === "1") === setup.playerFirst));
 }
 
 function renderSeg(containerId, choices, selId, onPick) {
@@ -98,8 +112,18 @@ $("seg-level").addEventListener("click", (e) => {
 });
 $("opt-hints").addEventListener("change", (e) => { setup.hints = e.target.checked; });
 
+// 手番トグル（CPU戦のみ表示）。先攻＝あなたが黒、後攻＝CPUが黒で先に打つ。
+$("seg-turn").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  setup.playerFirst = b.dataset.first === "1";
+  syncTurnSeg();
+});
+
 $("start-game").addEventListener("click", () => {
-  const assignment = { black: setup.black, white: setup.white };
+  const assignment = setup.mode === "cpu"
+    ? cpuAssignment(setup.black, cpuRef(setup.level), setup.playerFirst) // setup.black=選んだ人間
+    : { black: setup.black, white: setup.white };
   startMatch({ assignment, mode: setup.mode, level: setup.level, hints: setup.hints });
 });
 
@@ -160,6 +184,30 @@ function updateMessage() {
   msg.textContent = `${refForColor(state.current).name}（${state.current === BLACK ? "黒" : "白"}）の番`;
 }
 
+// パス告知バナーを中央に表示する。約1.2秒で自動的に消え、タップで即スキップ。
+// doMove から await されるため、バナーが消えてから次の手番（人の操作受付 or CPU着手）に進む。
+const PASS_HOLD_MS = 800;   // 保持時間（前後のフェード0.22秒ずつを加えて体感約1.2秒）
+const PASS_FADE_MS = 240;
+function showPassBanner(name, colorLabel) {
+  return new Promise((resolve) => {
+    const el = $("pass-banner");
+    if (!el) { resolve(); return; }
+    $("pass-sub").textContent = `${name}（${colorLabel}）は打てる場所がありません`;
+    el.classList.add("show");
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(holdTimer);
+      el.removeEventListener("click", finish);
+      el.classList.remove("show");
+      setTimeout(resolve, PASS_FADE_MS); // フェードアウトの分だけ待ってから次へ
+    };
+    el.addEventListener("click", finish); // タップで即スキップ
+    const holdTimer = setTimeout(finish, PASS_HOLD_MS);
+  });
+}
+
 function isCpuTurn() {
   return !state.over && refForColor(state.current).kind === "cpu";
 }
@@ -175,53 +223,68 @@ async function doMove(r, c) {
   const next = play(state, r, c);
   if (next === before) return; // 非合法
   busy = true;
-  clearTimeout(hintTimerId);
-  view.clearHints();
+  // 入力ロック(busy)は何が起きても必ず解除する。アニメのreject や音声(Web Audio)の
+  // 例外がここを貫通すると busy が true のまま固着し、合法手があっても盤が無反応になる
+  // （＝過去のフリーズの真因）。try/finally で確実に解放し、音声はゲーム進行をブロックさせない。
+  try {
+    clearTimeout(hintTimerId);
+    view.clearHints();
 
-  const color = state.current;
-  const flippedCount = count(next.board, color) - count(state.board, color) - 1;
-  match.moves.push({ r, c });
+    const color = state.current;
+    const flippedCount = count(next.board, color) - count(state.board, color) - 1;
+    match.moves.push({ r, c });
 
-  // ① 着手の溜め／② めくりの号砲／④ 角ヒットストップは、すべてアニメ側の
-  // タイミングに音・光を同期させる（コールバックで発火）。
-  const isCorner = (r === 0 || r === 7) && (c === 0 || c === 7);
-  const isBig = flippedCount >= 5; // 大量返し（events.jsのbigFlip閾値と一致）
-  await view.animateMove(state.board, next.board, { r, c }, color, {
-    onAppear: () => audio.playAppear(),              // 出現（フッ・極小）
-    onLand: () => audio.playPlace(),                 // 着地（コツ・主役）
-    onFlipLift: () => audio.playFlipLift(),          // 号砲の持ち上げ（スッ）
-    onFlipLand: (i) => audio.playFlipLand(i),        // 各めくりの着地（コツ・連鎖で上昇）
-    isBig,
-    // ④ 角／大量返しは着地でフリーズし、光＋音を先に出してからめくる
-    onImpact: () => {
-      if (isCorner) { audio.playEvent("corner"); view.applyEffects(["corner"], { r, c }); }
-      else if (isBig) { audio.playEvent("bigFlip"); view.applyEffects(["bigFlip"], { r, c, flippedCount, color }); }
-    },
-  });
+    // ① 着手の溜め／② めくりの号砲／④ 角ヒットストップは、すべてアニメ側の
+    // タイミングに音・光を同期させる（コールバックで発火）。
+    const isCorner = (r === 0 || r === 7) && (c === 0 || c === 7);
+    const isBig = flippedCount >= 5; // 大量返し（events.jsのbigFlip閾値と一致）
+    await view.animateMove(state.board, next.board, { r, c }, color, {
+      onAppear: () => audio.playAppear(),              // 出現（フッ・極小）
+      onLand: () => audio.playPlace(),                 // 着地（コツ・主役）
+      onFlipLift: () => audio.playFlipLift(),          // 号砲の持ち上げ（スッ）
+      onFlipLand: (i) => audio.playFlipLand(i),        // 各めくりの着地（コツ・連鎖で上昇）
+      isBig,
+      // ④ 角／大量返しは着地でフリーズし、光＋音を先に出してからめくる
+      onImpact: () => {
+        if (isCorner) { audio.playEvent("corner"); view.applyEffects(["corner"], { r, c }); }
+        else if (isBig) { audio.playEvent("bigFlip"); view.applyEffects(["bigFlip"], { r, c, flippedCount, color }); }
+      },
+    });
 
-  const prev = state;
-  state = next;
+    const prev = state;
+    state = next;
 
-  // パスが起きていたら棋譜にも記録
-  if (state.passed) match.moves.push({ pass: true });
+    // パスが起きていたら棋譜にも記録
+    if (state.passed) match.moves.push({ pass: true });
 
-  // 局面に応じてBGM切替（2段階：通常/終盤）
-  audio.setBgm(bgmState(state.board));
-  // スポット演出。角(corner)・大量返し(bigFlip)はアニメ中に発火済みなので除外し、残りをここで。
-  const tags = detectEvents(prev, state, { r, c }, flippedCount);
-  const handledInAnim = new Set();
-  if (isCorner) handledInAnim.add("corner");
-  if (isBig) handledInAnim.add("bigFlip");
-  for (const tag of tags) { if (handledInAnim.has(tag)) continue; audio.playEvent(tag); }
-  view.applyEffects(tags.filter((t) => !handledInAnim.has(t)), { r, c, flippedCount, color });
+    // 局面に応じてBGM切替（2段階：通常/終盤）
+    audio.setBgm(bgmState(state.board));
+    // スポット演出。角(corner)・大量返し(bigFlip)はアニメ中に発火済みなので除外し、残りをここで。
+    const tags = detectEvents(prev, state, { r, c }, flippedCount);
+    const handledInAnim = new Set();
+    if (isCorner) handledInAnim.add("corner");
+    if (isBig) handledInAnim.add("bigFlip");
+    for (const tag of tags) { if (handledInAnim.has(tag)) continue; audio.playEvent(tag); }
+    view.applyEffects(tags.filter((t) => !handledInAnim.has(t)), { r, c, flippedCount, color });
 
-  // 余韻を置いてからヒントを出す（着手直後に光らせない）
-  hintTimerId = setTimeout(() => view.renderHints(state, match.hints), HINT_DELAY);
-  renderPanels();
-  updateMessage();
-  busy = false;
+    // 余韻を置いてからヒントを出す（着手直後に光らせない）
+    hintTimerId = setTimeout(() => view.renderHints(state, match.hints), HINT_DELAY);
+    renderPanels();
+    updateMessage();
 
-  if (state.over) finishGame();
+    // パスが起きたら中央に大きく告知（誰が打てずパスしたか）。バナーが消えるまで次手は待つ。
+    if (state.passed) {
+      const passedColor = state.current === BLACK ? WHITE : BLACK; // パスしたのは手番が戻った側の相手
+      await showPassBanner(refForColor(passedColor).name, passedColor === BLACK ? "黒" : "白");
+    }
+  } catch (e) {
+    // 音声・描画の想定外失敗でゲームを止めない。状態は更新済み（or未更新）でも操作は継続可能。
+    console.warn("doMove 中に例外（無視して進行）", e);
+  } finally {
+    busy = false;
+  }
+
+  if (state.over) { try { finishGame(); } catch (e) { console.warn("finishGame 失敗", e); } }
 }
 
 function maybeCpuTurn() {
@@ -272,15 +335,23 @@ function showResult(res) {
     rt.textContent = "引き分け";
   }
   $("result-score").textContent = `黒 ${res.black} 対 白 ${res.white}`;
+  // 再戦ボタンの出し分け：CPU戦は「もう一回」、2人戦は「入れ替えて再戦／そのまま再戦」
+  const isCpu = match.mode === "cpu";
+  $("rematch").style.display = isCpu ? "" : "none";
+  $("rematch-swap").style.display = isCpu ? "none" : "";
+  $("rematch-same").style.display = isCpu ? "none" : "";
   $("overlay-result").classList.add("active");
 }
 
-// もう一回：設定維持。2人戦は先攻後攻を入替（公平に回す）、CPU戦は据え置き。
-$("rematch").addEventListener("click", () => {
+// 再戦：設定維持で割り当てだけ差し替える。
+// CPU戦＝「もう一回」（手番据え置き）。2人戦＝「入れ替えて再戦」/「そのまま再戦」を選択。
+function rematchWith(assignment) {
   $("overlay-result").classList.remove("active");
-  const assignment = match.mode === "cpu" ? match.assignment : swapColors(match.assignment);
   startMatch({ ...match, assignment });
-});
+}
+$("rematch").addEventListener("click", () => rematchWith(match.assignment));               // CPU戦：据え置き
+$("rematch-swap").addEventListener("click", () => rematchWith(swapColors(match.assignment))); // 2人戦：先攻後攻入替
+$("rematch-same").addEventListener("click", () => rematchWith(match.assignment));            // 2人戦：そのまま
 $("to-menu").addEventListener("click", () => {
   $("overlay-result").classList.remove("active");
   showScreen("menu");
