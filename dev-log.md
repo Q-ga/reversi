@@ -346,3 +346,9 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 盤の最下段が暗い問題：真因はカメラの余計なチルト(z 1.6→0.6＝約2°)と方向光のムラ。ライトをレフ板的に均一化（Hemisphere1.0→1.15／Ambient0.5→0.6／Directional0.5→0.3・ほぼ真上(1.5,18,1.5)・影radius5→7）。当初の頂点カラー補正は不自然なため撤去
 - SW CACHE v14→v15。`vendor/jsm/environments/RoomEnvironment.js`(ヒント専用envMap生成用)をASSETSに追加。テスト40→41 green（cpuAssignment追加）
 - 検証スクリプト：repro-freeze.mjs（2人戦60手・パス4回を固着0/例外0で完走）／check-pass-banner・check-cpu-turn・check-rematch（機能E2E）。見た目調整用 shot-* は確定後に削除
+
+## 2026-06-06 緑盤に差し替え・黒石を黒く・BGM音量を下げる
+- 盤テクスチャをユーザー提供の緑盤(1254px・金グリッド・等間隔ピッチ≈150px)に差し替え。新画像はグリッド線位置が旧と異なるため render3d.js の `LINES` を実測値の縦横平均 [25,177,327,477,628,779,928,1078,1227] に更新しマス整列を維持（/tmp計測スクリプトで縦横線を検出）
+- 黒石を黒く沈ませる：toneMappingExposure 1.05→0.92／HemisphereLight 1.15→0.92／AmbientLight 0.6→0.48／黒マテリアルをマット化(blackFaceMat roughness 0.4→0.88・blackEdgeMat 0.55→0.9, color 0x070707→0x050505)＝鏡面ハイライトの灰色テカリを消して黒さを強調。白石・盤の視認性は維持
+- BGM音量のみ低下：audio.js に `BGM_MASTER=0.55` 定数を新設し bgmGain(init/ setBgmEnabled)の 0.7 を集約・置換（約-21%）。効果音系統(sfxGain 0.9・個別gain)は一切未変更＝BGMだけ下がる
+- SW CACHE v15→v16。テスト41 green。スクショで新盤＋中央4石の整列・黒石の黒さを確認

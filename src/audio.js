@@ -14,6 +14,7 @@ const BGM_FILES = {
   endgame: "./audio/bgm_close.wav", // 終盤は緊迫感の音のみ（一方的分岐は廃止）
 };
 
+const BGM_MASTER = 0.55; // BGMマスター音量（ON時）。少し下げた（旧0.7）
 let ctx = null;
 let sfxGain = null;
 let bgmGain = null;
@@ -38,7 +39,7 @@ export function init() {
   const AC = window.AudioContext || window.webkitAudioContext;
   ctx = new AC();
   sfxGain = ctx.createGain(); sfxGain.gain.value = 0.9; sfxGain.connect(ctx.destination);
-  bgmGain = ctx.createGain(); bgmGain.gain.value = bgmOn ? 0.7 : 0; bgmGain.connect(ctx.destination);
+  bgmGain = ctx.createGain(); bgmGain.gain.value = bgmOn ? BGM_MASTER : 0; bgmGain.connect(ctx.destination);
   // 先読み済みをdecode（slice：decodeはArrayBufferを消費するため複製）
   for (const [k, ab] of Object.entries(rawBuffers)) {
     ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[k] = buf; }).catch(() => {});
@@ -50,7 +51,7 @@ export function setBgmEnabled(on) {
   bgmOn = on;
   if (bgmGain && ctx) {
     resetParam(bgmGain.gain, ctx.currentTime);
-    try { bgmGain.gain.setTargetAtTime(on ? 0.7 : 0, ctx.currentTime, 0.05); } catch {}
+    try { bgmGain.gain.setTargetAtTime(on ? BGM_MASTER : 0, ctx.currentTime, 0.05); } catch {}
   }
 }
 

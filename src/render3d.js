@@ -12,7 +12,8 @@ import { SIZE, EMPTY, BLACK, legalMoves } from "./rules.js";
 
 const BOARD = 10; // 盤プレーンのワールドサイズ
 // 提供画像(1254px)の金グリッド線位置 → マス中心の正規化座標(0..1)
-const LINES = [46, 190, 336, 482, 627, 772, 916, 1062, 1205].map((p) => p / 1254);
+// ※2026-06-06 緑盤に差し替え。新画像はほぼ等間隔(ピッチ≈150px)。縦横線位置の平均値。
+const LINES = [25, 177, 327, 477, 628, 779, 928, 1078, 1227].map((p) => p / 1254);
 const CENTERS = LINES.slice(0, 8).map((_, i) => (LINES[i] + LINES[i + 1]) / 2);
 const PITCH = (LINES[8] - LINES[0]) / 8; // 1マスの正規化幅
 const STONE_R = PITCH * BOARD * 0.42; // 直径≈マスの0.84（実物比）
@@ -31,7 +32,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.92; // 黒石を黒く沈ませるため露出を下げる（旧1.05）
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
   renderer.domElement.style.width = "100%";
@@ -56,8 +57,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
 
   // ライト：レフ板のように面で全体を均一に照らす。方向光は弱く・ほぼ真上にして、
   // 盤面の明暗ムラを作らず「石の接地影」だけを担わせる。石の厚みの陰影は面テクスチャで出す。
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x39414c, 1.15));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x39414c, 0.92)); // 黒石を黒く（旧1.15）
+  scene.add(new THREE.AmbientLight(0xffffff, 0.48));               // 黒石を黒く（旧0.6）
   const key = new THREE.DirectionalLight(0xffffff, 0.3); // 弱め＝盤の方向ムラを出さず接地影だけ
   key.position.set(1.5, 18, 1.5);                        // ほぼ真上。影が石の真下に短く落ちる
   key.castShadow = true;
@@ -103,8 +104,9 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   const whiteFaceTex = makeDiscTexture([[0, "#d4d2c9"], [0.5, "#e6e4dc"], [0.88, "#ffffff"], [1, "#efeee7"]]);
 
   // 黒=上半分（上面＝顔テクスチャ／側面＝黒）、白=下半分（下面＝顔テクスチャ／側面＝白）
-  const blackFaceMat = new THREE.MeshStandardMaterial({ map: blackFaceTex, roughness: 0.4, metalness: 0.0 });
-  const blackEdgeMat = new THREE.MeshStandardMaterial({ color: 0x070707, roughness: 0.55, metalness: 0.0 });
+  // roughnessを上げてマット化＝鏡面ハイライト(灰色のテカリ)を消し、より黒く見せる
+  const blackFaceMat = new THREE.MeshStandardMaterial({ map: blackFaceTex, roughness: 0.88, metalness: 0.0 });
+  const blackEdgeMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9, metalness: 0.0 });
   const whiteFaceMat = new THREE.MeshStandardMaterial({ map: whiteFaceTex, roughness: 0.55, metalness: 0.0 });
   const whiteEdgeMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.6, metalness: 0.0 });
 
