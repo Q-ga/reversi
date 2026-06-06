@@ -352,3 +352,13 @@ R5/R6の前に、着手・めくり・BGM・角の演出を1問ずつgrillして
 - 黒石を黒く沈ませる：toneMappingExposure 1.05→0.92／HemisphereLight 1.15→0.92／AmbientLight 0.6→0.48／黒マテリアルをマット化(blackFaceMat roughness 0.4→0.88・blackEdgeMat 0.55→0.9, color 0x070707→0x050505)＝鏡面ハイライトの灰色テカリを消して黒さを強調。白石・盤の視認性は維持
 - BGM音量のみ低下：audio.js に `BGM_MASTER=0.55` 定数を新設し bgmGain(init/ setBgmEnabled)の 0.7 を集約・置換（約-21%）。効果音系統(sfxGain 0.9・個別gain)は一切未変更＝BGMだけ下がる
 - SW CACHE v15→v16。テスト41 green。スクショで新盤＋中央4石の整列・黒石の黒さを確認
+
+## 2026-06-07 設定画面（音量調整・ミュート移設・エフェクト演出ON/OFF・歯車モーダル）
+- 要件をgrill-with-docsで確定（永続化する／歯車は全画面右上常時／ミュートはスライダー＋独立トグル＋エフェクト演出トグル追加／ラベル「設定」／エフェクトOFF＝スポット演出だけ停止）。CONTEXT.mdに用語「設定」を追加
+- 新規 src/settings.js（純粋＋永続化の深いモジュール）：DEFAULTS／normalizeSettings（[0,1]クランプ・型強制・破損入力フォールバック＝localStorage境界の検証）／effectiveGain（master×on×vol）／loadSettings・saveSettings（storage注入可・JSON例外安全）。tddで test/settings.test.js 9件をRED→GREENで作成
+- audio.js：SFX_MASTER=0.9定数化、bgmVol/sfxVol状態＋setBgmVolume/setSfxVolume/getter追加。init・applyBgmGainでeffectiveGain使用（音量100%=現マスター）。BGMミュートは effectiveGain で master×on×vol、効果音ミュートは従来どおり再生時ゲート。未使用化した isBgmEnabled/isSfxEnabled を削除
+- render3d.js：effectsEnabledフラグ＋setEffectsEnabled。applyEffectsをOFF時no-op、animateMoveの special=effectsEnabled&&(isCorner||isBig) で角/大量返しのヒットストップ（フリーズ・揺れ）も停止
+- index.html：対局下部の旧ミュートチェックボックス2つ（snd-bgm/snd-sfx）と.sound-row撤去。全画面右上固定の歯車(.gear-btn)＋設定モーダル(overlay-settings)＋金グラデのスライダーCSS追加
+- main.js：起動時loadSettings→audio各setter→syncSettingsUI。歯車で開く/閉じる・外側タップ閉じ。スライダーinput(即時反映)/change(保存)。BGMミュートはstart/stopBgm挙動を維持。エフェクトトグルはview生成済みなら即反映＋startMatchでも反映。appSettingsは先頭宣言（doMoveが参照）
+- code-review(high)指摘の実バグ1件を修正：エフェクト演出OFF時、角(bell)/大量返し(big_swoosh)の効果音がonImpact経由のみで鳴らず消える退行。handledInAnimへの除外を appSettings.effectsOn&& で条件化し、OFF時はフォールバックのplayEvent(tag)で鳴らす（光はno-opで抑止維持）。CONTEXT「音は効果音設定に従う」と整合
+- SW CACHE v17→v18、settings.jsをASSETSに追加。テスト41→50 green。検証：scripts/check-settings.mjs（歯車開閉・スライダー反映・localStorage永続化・リロード復元・エラー0）＋repro-freeze完走

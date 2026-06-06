@@ -112,7 +112,27 @@
   .controls{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; }
   .controls button{ background:#13110b; color:var(--gold-bright); font-weight:700; padding:11px 16px; font-size:14px;
     border:1px solid var(--line); border-radius:12px; }
-  .sound-row{ display:flex; gap:16px; font-size:13px; color:var(--muted); }
+
+  /* 設定（歯車＋モーダル） */
+  .gear-btn{ position:fixed; top:calc(env(safe-area-inset-top) + 10px); right:12px; z-index:15;
+    width:42px; height:42px; border-radius:50%; background:#13110b; color:var(--gold-bright);
+    border:1px solid var(--line); font-size:21px; line-height:1; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 14px rgba(0,0,0,.5); }
+  .gear-btn:active{ background:#1c190f; transform:rotate(40deg); }
+  .settings-card{ max-width:380px; text-align:left; }
+  .settings-card .big{ text-align:center; }
+  .set-group{ display:flex; flex-direction:column; gap:20px; }
+  .set-row{ display:flex; align-items:center; gap:12px; }
+  .set-row .toggle{ min-width:104px; font-size:15px; color:var(--text); }
+  .set-val{ font-size:13px; color:var(--gold-bright); width:44px; text-align:right; font-variant-numeric:tabular-nums; }
+  .set-row-toggle{ flex-direction:column; align-items:flex-start; gap:3px; }
+  .set-hint{ font-size:11px; color:var(--muted); padding-left:24px; }
+  .slider{ -webkit-appearance:none; appearance:none; height:6px; border-radius:4px; flex:1; min-width:0;
+    background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright)); outline:none; }
+  .slider::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:22px; height:22px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#f7e6b0,#c69a36); border:1px solid #f0d98a;
+    box-shadow:0 2px 6px rgba(0,0,0,.5); cursor:pointer; }
+  .slider::-moz-range-thumb{ width:22px; height:22px; border-radius:50%; background:#e8cd7e; border:1px solid #f0d98a; cursor:pointer; }
 
   /* 結果オーバーレイ */
   .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.86); display:none; align-items:center; justify-content:center; z-index:20; padding:20px; }
@@ -203,10 +223,6 @@
       <button id="btn-restart">最初から</button>
       <button id="btn-quit">メニュー</button>
     </div>
-    <div class="sound-row">
-      <label class="toggle"><input type="checkbox" id="snd-bgm" checked> BGM</label>
-      <label class="toggle"><input type="checkbox" id="snd-sfx" checked> 効果音</label>
-    </div>
   </section>
 
   <!-- 戦績 -->
@@ -240,6 +256,31 @@
         <button class="btn-sub" id="rematch-same">そのまま再戦</button>
         <button class="btn-sub" id="to-menu">メニューに戻る</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 設定：全画面右上に固定の歯車。タップで下のモーダルをpop。 -->
+  <button id="gear-btn" class="gear-btn" aria-label="設定を開く">⚙</button>
+  <div class="overlay" id="overlay-settings">
+    <div class="result-card settings-card">
+      <div class="big" style="margin-bottom:20px">設定</div>
+      <div class="set-group">
+        <div class="set-row">
+          <label class="toggle"><input type="checkbox" id="set-bgm-on" checked> BGM</label>
+          <input type="range" id="set-bgm-vol" class="slider" min="0" max="100" step="1" value="100" aria-label="BGM音量">
+          <span class="set-val" id="set-bgm-val">100%</span>
+        </div>
+        <div class="set-row">
+          <label class="toggle"><input type="checkbox" id="set-sfx-on" checked> 効果音</label>
+          <input type="range" id="set-sfx-vol" class="slider" min="0" max="100" step="1" value="100" aria-label="効果音音量">
+          <span class="set-val" id="set-sfx-val">100%</span>
+        </div>
+        <div class="set-row set-row-toggle">
+          <label class="toggle"><input type="checkbox" id="set-effects-on" checked> エフェクト演出</label>
+          <span class="set-hint">特別な瞬間の光・決め演出</span>
+        </div>
+      </div>
+      <button class="btn-primary" id="settings-close" style="margin-top:24px">閉じる</button>
     </div>
   </div>
 

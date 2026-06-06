@@ -43,6 +43,11 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   // デバッグ用：?slow=6 でアニメをN倍遅くして途中コマを確認できる
   const SPEED = Math.max(1, Number(new URLSearchParams(location.search).get("slow")) || 1);
 
+  // エフェクト演出（スポット演出＝特別な瞬間の光・決め演出）の表示可否。設定でOFFにできる。
+  // OFF時は applyEffects を無効化し、角/大量返しのヒットストップ（フリーズ・揺れ）も止める。
+  // 石を置く・めくる基本アニメと、文字での告知は残る。
+  let effectsEnabled = true;
+
   // カメラ：真上から見下ろし（ごく僅かに寄せて浮上した石が分かる程度）
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
   camera.position.set(0, 18, 0.6); // ほぼ真上（約2°）。余計なチルトを抑えつつ石の厚みは僅かに見せる
@@ -409,6 +414,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     }
   }
   function applyEffects(tags, ctx = {}) {
+    if (!effectsEnabled) return; // スポット演出OFF：光・決め演出を出さない
     const pos = ctx.r != null ? cellToWorld(ctx.r, ctx.c) : { x: 0, z: 0 };
     for (const tag of tags) {
       switch (tag) {
@@ -567,7 +573,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
         if (line.length) groups.push(line);
       }
       const isCorner = (move.r === 0 || move.r === SIZE - 1) && (move.c === 0 || move.c === SIZE - 1);
-      const special = isCorner || isBig; // ④ 角／大量返しはフリーズ→演出後にめくり
+      // ④ 角／大量返しはフリーズ→演出後にめくり。エフェクト演出OFF時は決め演出をやめ通常手と同じ流れに。
+      const special = effectsEnabled && (isCorner || isBig);
 
       placeWithAnticipation(placed.group, color, {
         onAppear,
@@ -628,6 +635,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     clearHints,
     animateMove,
     applyEffects,
+    setEffectsEnabled(on) { effectsEnabled = !!on; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); container.removeChild(renderer.domElement); },
     THREE, scene, camera, renderer, stoneMap, cellToWorld, STONE_R, STONE_H,
   };

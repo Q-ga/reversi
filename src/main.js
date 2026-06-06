@@ -10,6 +10,7 @@ import { swapColors, shouldRecord, cpuAssignment } from "./match.js";
 import { statsForUser, headToHead } from "./stats.js";
 import { buildCSV, buildJSON } from "./exporter.js";
 import * as audio from "./audio.js";
+import { loadSettings, saveSettings } from "./settings.js";
 import {
   listProfiles, addProfile, updateProfile, deleteProfile, addGame, listGames, MAX_PROFILES,
 } from "./storage.js";
@@ -23,6 +24,7 @@ let setup = { mode: "2p", black: null, white: null, level: 2, hints: true, playe
 let match = null; // { assignment, mode, level, hints, startedAt, moves }
 let state = null;
 let view = null; // three.jsの盤ビュー（初回startMatchで生成し再利用）
+let appSettings = loadSettings(); // 永続化された設定（音量・ミュート・エフェクト演出）。doMove等から参照
 let busy = false;
 let cpuTimerId = null;
 let hintTimerId = null;       // 合法手ヒントの表示を少し遅らせるためのタイマー
@@ -138,8 +140,7 @@ function startMatch(cfg) {
     view = createBoardView($("board3d"), onCell);
     if (location.search.includes("slow")) window.__view = view; // デバッグ用
   }
-  $("snd-bgm").checked = audio.isBgmEnabled();
-  $("snd-sfx").checked = audio.isSfxEnabled();
+  view.setEffectsEnabled(appSettings.effectsOn); // 設定のエフェクト演出ON/OFFを反映
   showScreen("game");
   view.sync(state, match.hints);
   renderPanels();
@@ -259,11 +260,13 @@ async function doMove(r, c) {
 
     // 局面に応じてBGM切替（2段階：通常/終盤）
     audio.setBgm(bgmState(state.board));
-    // スポット演出。角(corner)・大量返し(bigFlip)はアニメ中に発火済みなので除外し、残りをここで。
+    // スポット演出。角(corner)・大量返し(bigFlip)はエフェクト演出ON時のみアニメ中のonImpactで
+    // 音・光が発火済みなので除外する。OFF時はonImpactが呼ばれないため、ここで効果音を鳴らす
+    // （光はapplyEffectsがOFF時no-opなので出ない）。効果音はエフェクト演出設定に依らず効果音設定に従う。
     const tags = detectEvents(prev, state, { r, c }, flippedCount);
     const handledInAnim = new Set();
-    if (isCorner) handledInAnim.add("corner");
-    if (isBig) handledInAnim.add("bigFlip");
+    if (appSettings.effectsOn && isCorner) handledInAnim.add("corner");
+    if (appSettings.effectsOn && isBig) handledInAnim.add("bigFlip");
     for (const tag of tags) { if (handledInAnim.has(tag)) continue; audio.playEvent(tag); }
     view.applyEffects(tags.filter((t) => !handledInAnim.has(t)), { r, c, flippedCount, color });
 
@@ -375,11 +378,69 @@ $("btn-undo").addEventListener("click", async () => {
   updateMessage();
   audio.setBgm(bgmState(state.board));
 });
-$("snd-bgm").addEventListener("change", (e) => {
-  audio.setBgmEnabled(e.target.checked);
-  if (e.target.checked && state && !state.over) audio.startBgm(bgmState(state.board)); else audio.stopBgm();
+// ============ 設定（音量・ミュート・エフェクト演出）============
+// ロード済みの appSettings（先頭で宣言）を音声・盤ビュー・モーダルUIに反映する。状態は不変更新で持つ。
+const pct = (v) => `${Math.round(v * 100)}%`;
+
+function syncSettingsUI() {
+  $("set-bgm-on").checked = appSettings.bgmOn;
+  $("set-sfx-on").checked = appSettings.sfxOn;
+  $("set-effects-on").checked = appSettings.effectsOn;
+  $("set-bgm-vol").value = Math.round(appSettings.bgmVol * 100);
+  $("set-sfx-vol").value = Math.round(appSettings.sfxVol * 100);
+  $("set-bgm-val").textContent = pct(appSettings.bgmVol);
+  $("set-sfx-val").textContent = pct(appSettings.sfxVol);
+}
+// 音声へ反映（init前でも内部値だけ更新され、init時に初期ゲインへ反映される）
+audio.setBgmEnabled(appSettings.bgmOn);
+audio.setSfxEnabled(appSettings.sfxOn);
+audio.setBgmVolume(appSettings.bgmVol);
+audio.setSfxVolume(appSettings.sfxVol);
+syncSettingsUI();
+
+const persist = () => saveSettings(appSettings);
+
+// モーダル開閉（歯車で開く・閉じる/外側タップで閉じる）
+$("gear-btn").addEventListener("click", () => { syncSettingsUI(); $("overlay-settings").classList.add("active"); });
+$("settings-close").addEventListener("click", () => $("overlay-settings").classList.remove("active"));
+$("overlay-settings").addEventListener("click", (e) => {
+  if (e.target === $("overlay-settings")) $("overlay-settings").classList.remove("active");
 });
-$("snd-sfx").addEventListener("change", (e) => audio.setSfxEnabled(e.target.checked));
+
+// BGMミュート：切替時に再生/停止も行う（対局中のみ再開）
+$("set-bgm-on").addEventListener("change", (e) => {
+  const on = e.target.checked;
+  appSettings = { ...appSettings, bgmOn: on };
+  audio.setBgmEnabled(on);
+  if (on && state && !state.over) audio.startBgm(bgmState(state.board)); else if (!on) audio.stopBgm();
+  persist();
+});
+$("set-sfx-on").addEventListener("change", (e) => {
+  appSettings = { ...appSettings, sfxOn: e.target.checked };
+  audio.setSfxEnabled(e.target.checked);
+  persist();
+});
+// 音量スライダー：ドラッグ中(input)は即時反映、確定(change)で保存（localStorage連打を避ける）
+$("set-bgm-vol").addEventListener("input", (e) => {
+  const v = e.target.value / 100;
+  appSettings = { ...appSettings, bgmVol: v };
+  audio.setBgmVolume(v);
+  $("set-bgm-val").textContent = pct(v);
+});
+$("set-bgm-vol").addEventListener("change", persist);
+$("set-sfx-vol").addEventListener("input", (e) => {
+  const v = e.target.value / 100;
+  appSettings = { ...appSettings, sfxVol: v };
+  audio.setSfxVolume(v);
+  $("set-sfx-val").textContent = pct(v);
+});
+$("set-sfx-vol").addEventListener("change", persist);
+// エフェクト演出：盤ビューがあれば即反映（無ければ次のstartMatchで反映）
+$("set-effects-on").addEventListener("change", (e) => {
+  appSettings = { ...appSettings, effectsOn: e.target.checked };
+  if (view) view.setEffectsEnabled(e.target.checked);
+  persist();
+});
 
 // ============ 戦績 ============
 async function openStats() {

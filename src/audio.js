@@ -14,12 +14,17 @@ const BGM_FILES = {
   endgame: "./audio/bgm_close.wav", // 終盤は緊迫感の音のみ（一方的分岐は廃止）
 };
 
-const BGM_MASTER = 0.55; // BGMマスター音量（ON時）。少し下げた（旧0.7）
+import { effectiveGain } from "./settings.js";
+
+const BGM_MASTER = 0.55; // BGMマスター基準音量（音量100%時）。少し下げた（旧0.7）
+const SFX_MASTER = 0.9;  // 効果音マスター基準音量（音量100%時）
 let ctx = null;
 let sfxGain = null;
 let bgmGain = null;
 let sfxOn = true;
 let bgmOn = true;
+let bgmVol = 1; // BGM音量(0..1)。設定スライダーで変更。100%=マスターそのまま
+let sfxVol = 1; // 効果音音量(0..1)
 
 const rawBuffers = {}; // name -> ArrayBuffer（fetch済み・decode前）
 const buffers = {};    // name -> AudioBuffer（decode済み）
@@ -38,8 +43,9 @@ export function init() {
   if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext;
   ctx = new AC();
-  sfxGain = ctx.createGain(); sfxGain.gain.value = 0.9; sfxGain.connect(ctx.destination);
-  bgmGain = ctx.createGain(); bgmGain.gain.value = bgmOn ? BGM_MASTER : 0; bgmGain.connect(ctx.destination);
+  // 効果音マスターは音量のみ反映（ミュートは再生時に sfxOn でゲート）。BGMはミュート×音量を即反映。
+  sfxGain = ctx.createGain(); sfxGain.gain.value = SFX_MASTER * sfxVol; sfxGain.connect(ctx.destination);
+  bgmGain = ctx.createGain(); bgmGain.gain.value = effectiveGain(BGM_MASTER, bgmOn, bgmVol); bgmGain.connect(ctx.destination);
   // 先読み済みをdecode（slice：decodeはArrayBufferを消費するため複製）
   for (const [k, ab] of Object.entries(rawBuffers)) {
     ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[k] = buf; }).catch(() => {});
@@ -49,11 +55,30 @@ export function init() {
 export function setSfxEnabled(on) { sfxOn = on; }
 export function setBgmEnabled(on) {
   bgmOn = on;
-  if (bgmGain && ctx) {
-    resetParam(bgmGain.gain, ctx.currentTime);
-    try { bgmGain.gain.setTargetAtTime(on ? BGM_MASTER : 0, ctx.currentTime, 0.05); } catch {}
+  applyBgmGain();
+}
+
+// BGMマスターゲインを現在のミュート×音量に合わせて滑らかに更新する。
+function applyBgmGain() {
+  if (!bgmGain || !ctx) return;
+  resetParam(bgmGain.gain, ctx.currentTime);
+  try { bgmGain.gain.setTargetAtTime(effectiveGain(BGM_MASTER, bgmOn, bgmVol), ctx.currentTime, 0.05); } catch {}
+}
+
+// 音量(0..1)を設定。ミュート状態は保ったまま音量だけ変える（ミュート中の操作も値は記憶）。
+export function setBgmVolume(v) {
+  bgmVol = Math.min(1, Math.max(0, Number(v) || 0));
+  applyBgmGain();
+}
+export function setSfxVolume(v) {
+  sfxVol = Math.min(1, Math.max(0, Number(v) || 0));
+  if (sfxGain && ctx) {
+    resetParam(sfxGain.gain, ctx.currentTime);
+    try { sfxGain.gain.setTargetAtTime(SFX_MASTER * sfxVol, ctx.currentTime, 0.05); } catch {}
   }
 }
+export function getBgmVolume() { return bgmVol; }
+export function getSfxVolume() { return sfxVol; }
 
 // AudioParam を安全に再スケジュールするための共通ヘルパ。
 // cancelScheduledValues は「過去に開始して進行中の」曲線を終端できず、直後の
@@ -68,8 +93,6 @@ function resetParam(param, now) {
   try { param.cancelScheduledValues(now); } catch {}
   try { param.setValueAtTime(param.value, now); } catch {}
 }
-export function isSfxEnabled() { return sfxOn; }
-export function isBgmEnabled() { return bgmOn; }
 
 function playBuffer(name, { rate = 1, gain = 1 } = {}) {
   if (!ctx || !sfxOn || !buffers[name]) return;
@@ -125,33 +148,38 @@ export function startBgm(state = "normal") {
 
 // 等パワークロスフェード（③ 急な転換を約3秒で緩やかに）
 const XFADE_SEC = 6.0;     // クロスフェード時間（実時間・かなり緩やかに）
-const BGM_LEVEL = 0.9;     // BGMの定常音量
-function eqPowerCurves(level, steps = 64) {
-  const out = new Float32Array(steps); // フェードアウト：level→0
-  const inn = new Float32Array(steps); // フェードイン ：0→level
-  // 指数<1で両カーブが中央側に膨らみ、2曲が同時に大きく鳴る重複区間を増やす
+const BGM_LEVEL = 0.9;     // BGMの定常音量（normal基準）
+// 音源ごとの聴感ラウドネス差を補正するトリム。A特性RMS実測で close は normal より
+// 約1.5dBA大きい→0.84倍(=-1.5dB)で揃える。前半/終盤が同じ大きさに聞こえるように。
+const BGM_TRIM = { normal: 1.0, endgame: 0.84 };
+function trimLevel(state) { return BGM_LEVEL * (BGM_TRIM[state] ?? 1.0); }
+
+// 等パワーフェード曲線を1本生成。dir='out'は level→0、'in'は 0→level。
+// 指数<1でカーブが中央側に膨らみ、2曲が同時に大きく鳴る重複区間を増やす。
+function eqPowerCurve(level, dir, steps = 64) {
+  const c = new Float32Array(steps);
   for (let i = 0; i < steps; i++) {
     const t = i / (steps - 1);
-    out[i] = level * Math.pow(Math.cos((t * Math.PI) / 2), 0.6);
-    inn[i] = level * Math.pow(Math.sin((t * Math.PI) / 2), 0.6);
+    const ph = dir === "out" ? Math.cos((t * Math.PI) / 2) : Math.sin((t * Math.PI) / 2);
+    c[i] = level * Math.pow(ph, 0.6);
   }
-  return { out, inn };
+  return c;
 }
 
 // 局面に応じてBGMを切り替える（normal / endgame）。等パワーで約3秒かけて溶け合わせる。
+// in/out で各トラックのトリム後レベルを使い、音源ごとの音量差を補正する。
 export function setBgm(state, force = false) {
   if (!ctx || !bgmRunning) return;
   if (!force && state === currentBgm) return;
   // decodeがまだなら少し待って再試行
   if (!buffers[state]) { setTimeout(() => setBgm(state, force), 200); return; }
   const now = ctx.currentTime;
-  const { out, inn } = eqPowerCurves(BGM_LEVEL);
-  // 既存トラックを等パワーでフェードアウト＆停止予約。
+  // 既存トラックを等パワーでフェードアウト＆停止予約（各トラック自身のレベルから0へ）。
   // resetParam で進行中の曲線を現在値に固定して終端 → 新しい曲線はオーバーラップせず投げない。
   for (const [name, tr] of Object.entries(bgmTracks)) {
     if (name !== state) {
       resetParam(tr.gain.gain, now);
-      try { tr.gain.gain.setValueCurveAtTime(out, now, XFADE_SEC); } catch {}
+      try { tr.gain.gain.setValueCurveAtTime(eqPowerCurve(trimLevel(name), "out"), now, XFADE_SEC); } catch {}
       try { tr.src.stop(now + XFADE_SEC + 0.3); } catch {}
       delete bgmTracks[name];
     }
@@ -159,10 +187,11 @@ export function setBgm(state, force = false) {
   if (!bgmTracks[state]) bgmTracks[state] = startTrack(state);
   const tr = bgmTracks[state];
   if (tr) {
+    const level = trimLevel(state);
     resetParam(tr.gain.gain, now);
     try {
-      tr.gain.gain.setValueCurveAtTime(inn, now, XFADE_SEC);
-      tr.gain.gain.setValueAtTime(BGM_LEVEL, now + XFADE_SEC); // フェード後は定常音量を維持
+      tr.gain.gain.setValueCurveAtTime(eqPowerCurve(level, "in"), now, XFADE_SEC);
+      tr.gain.gain.setValueAtTime(level, now + XFADE_SEC); // フェード後は定常音量を維持
     } catch {}
   }
   currentBgm = state;
