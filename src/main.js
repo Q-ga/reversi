@@ -11,6 +11,8 @@ import { statsForUser, headToHead } from "./stats.js";
 import { buildCSV, buildJSON } from "./exporter.js";
 import * as audio from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
+import { registry, isDebugMode } from "./variants.js";
+import { mountDebugPanel } from "./debugpanel.js";
 import { watchReducedMotion } from "./motion.js";
 import {
   listProfiles, addProfile, updateProfile, deleteProfile, addGame, listGames, MAX_PROFILES,
@@ -572,6 +574,28 @@ async function openProfiles() {
     body.appendChild(note);
   }
   showScreen("profiles");
+}
+
+// ============ 比較ビルド（バリアント切替・CONTEXT.md「開発・検収」）============
+// クラフトの検収用。後続のクラフト・パス（着石音/めくり音/終局音/石マテリアル/めくりタイミング）は
+// ここで registry.register によりテーマを登録し、registry.variantOf(テーマID, variantSelection) で
+// 選択中バリアント（実装値ごと）を取り出して適用する。
+// ダミーテーマ：登録→URL指定→適用の通し確認用。html要素のdata属性へ書くだけで、
+// 通常プレイの見た目・挙動には一切影響しない（CSS等からの参照なし）。
+registry.register({
+  id: "demo",
+  label: "ダミー（検収用）",
+  defaultId: "a",
+  variants: [
+    { id: "a", label: "案A（既定）" },
+    { id: "b", label: "案B" },
+  ],
+});
+const variantSelection = registry.resolve(location.search);
+document.documentElement.dataset.variantDemo = variantSelection.demo;
+// 切替パネルは ?debug=1 のときだけ生成する（フラグ無しではDOMに存在しない）
+if (isDebugMode(location.search)) {
+  mountDebugPanel(registry, variantSelection);
 }
 
 showScreen("menu");
