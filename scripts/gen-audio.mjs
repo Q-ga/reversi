@@ -231,5 +231,160 @@ const BR = 32000;
   console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.85), BR));
 }
 
+// ===================== 終局音バリアント（#8・比較ビルド・追記ブロック） =====================
+// 既存の fanfare_win / fanfare_lose は変更せず、豪華化案を独立ファイルとして追加生成する。
+// 方向（CONTEXT.md「スポット演出」終局/完封・v1落第リスト5）：勝利の余韻に足る豪華さ。
+//   案B「ロイヤル」　　＝ ブラスの厚み（デチューン重ね＋低音土台）＋ベル対旋律＋深いリバーブ
+//   案C「オーケストラ」＝ ティンパニロール＋ブラスヒット連打＋シンバル様クラッシュ＋深いリバーブ
+// 完封（shutout）は gameover と同時発火で「重ねて」鳴る前提のレイヤー音
+// （単体で完結させず、勝利ファンファーレへの加算で豪華になるよう設計）。
+// バッファ長は案ごとに変えてある（E2E検証で再生音をAudioBufferの長さで識別するため）。
+
+// ブラス様の1音：saw のデチューン2本＋1オクターブ下＋サブ正弦で合奏の厚みを出す
+function brassTone(b, sr, { freq, t0, dur, gain, vib = 5 }) {
+  tone(b, sr, { type: "saw", freq, t0, dur, gain: gain * 0.55, vib, decay: dur * 0.85 });
+  tone(b, sr, { type: "saw", freq: freq * 1.006, t0, dur, gain: gain * 0.4, vib, decay: dur * 0.85 }); // デチューン＝うねり
+  tone(b, sr, { type: "saw", freq: freq * 0.5, t0, dur, gain: gain * 0.35, vib, decay: dur * 0.9 });   // 1オクターブ下＝土台
+  tone(b, sr, { type: "sine", freq: freq * 0.5, t0, dur, gain: gain * 0.3, decay: dur * 0.9 });        // サブ＝量感
+}
+// ベル様の1音：非整数次倍音の正弦を重ねる（教会鐘の鳴り）
+function bellTone(b, sr, { freq, t0, gain, dur = 1.2 }) {
+  [[1, 1.0], [2.0, 0.55], [2.92, 0.35], [4.21, 0.2], [5.4, 0.12]].forEach(([m, g]) =>
+    tone(b, sr, { type: "sine", freq: freq * m, t0, dur, gain: gain * g, attack: 0.002, decay: dur * 0.3 }));
+}
+// 別バッファで作った音（個別にローパス済み等）を主バッファへ加算する
+function mixInto(dst, src, gain = 1) {
+  const n = Math.min(dst.length, src.length);
+  for (let i = 0; i < n; i++) dst[i] += src[i] * gain;
+}
+
+// --- 案B ロイヤル：勝利（上昇アルペジオ→頂点の大和音＋ベル対旋律） ---
+{
+  const b = blank(3.2, SR), root = 392; // G4（既定案と同じ調＝世界観を揃える）
+  // 上昇アルペジオ（既定案の音形を踏襲しつつブラスの厚みで）
+  [0, 4, 7, 12].forEach((s, i) =>
+    brassTone(b, SR, { freq: semis(root, s), t0: i * 0.11, dur: 0.42, gain: 0.16 }));
+  // 頂点で大和音を伸ばす（G: 3rd・5th・オクターブを重ねる）
+  [12, 16, 19, 24].forEach((s) =>
+    brassTone(b, SR, { freq: semis(root, s), t0: 0.48, dur: 1.6, gain: 0.12, vib: 5.5 }));
+  // ベルの対旋律（和音の上できらめく）
+  [[19, 0.55], [16, 0.72], [12, 0.9], [24, 1.1]].forEach(([s, t0]) =>
+    bellTone(b, SR, { freq: semis(root, s + 12), t0, gain: 0.1, dur: 1.3 }));
+  lowpass(b, 3400, SR);
+  const wet = reverb(b, SR, { decay: 2.8, mix: 0.45 }); // 既定案（リバーブ無し）より深い残響＝余韻
+  console.log("✔", writeWav("fanfare_win_royal.wav", normalize(wet, 0.85), SR));
+}
+
+// --- 案B ロイヤル：敗北（下降短調を温かい層で・低い短三和音の余韻） ---
+{
+  const b = blank(2.6, SR), root = 392;
+  // 既定案と同じ下降音形を tri＋オクターブ下 sine の2層で重ねる
+  [0, -3, -7, -12].forEach((s, i) => {
+    const f = semis(root, s), t0 = i * 0.17;
+    tone(b, SR, { type: "tri", freq: f, t0, dur: 0.7, gain: 0.2, decay: 0.55 });
+    tone(b, SR, { type: "sine", freq: f * 0.5, t0, dur: 0.8, gain: 0.12, decay: 0.6 });
+  });
+  // 最後に低いGマイナーのパッドが残る（重い余韻・豪華だが沈む）
+  [-12, -9, -5].forEach((s) =>
+    tone(b, SR, { type: "tri", freq: semis(root, s), t0: 0.75, dur: 1.5, gain: 0.08, vib: 4, decay: 1.0 }));
+  lowpass(b, 2200, SR);
+  const wet = reverb(b, SR, { decay: 2.4, mix: 0.4 });
+  console.log("✔", writeWav("fanfare_lose_royal.wav", normalize(wet, 0.6), SR));
+}
+
+// --- 案B ロイヤル：完封レイヤー（上昇ベルカスケード＋高域のきらめき粒） ---
+{
+  const b = blank(3.0, SR), root = 784; // G5＝勝利ファンファーレの上に重なる音域
+  [0, 4, 7, 12, 16, 19, 24].forEach((s, i) =>
+    bellTone(b, SR, { freq: semis(root, s), t0: 0.3 + i * 0.09, gain: 0.12, dur: 1.4 }));
+  // きらめきの粒（高域の小さなベルを決定的な間隔で散らす）
+  for (let k = 0; k < 18; k++) {
+    const t0 = 0.4 + ((k * 0.073) % 1.2);
+    const f = semis(root * 2, [0, 4, 7, 12][k % 4]);
+    tone(b, SR, { type: "sine", freq: f, t0, dur: 0.5, gain: 0.04, attack: 0.002, decay: 0.12 });
+  }
+  const wet = reverb(b, SR, { decay: 3.0, mix: 0.5 });
+  console.log("✔", writeWav("fanfare_shutout_royal.wav", normalize(wet, 0.55), SR));
+}
+
+// --- 案C オーケストラ：勝利（ティンパニロール→ブラスヒット連打→フィナーレ大和音） ---
+{
+  const b = blank(3.4, SR), root = 392;
+  // ティンパニロール（低域のみにローパスしてから合流）
+  const timp = blank(3.4, SR);
+  for (let i = 0; i < (0.5 * SR) | 0; i++) {
+    const t = i / SR;
+    timp[i] += noise() * 0.6 * (0.4 + 0.6 * (t / 0.5)) * (0.6 + 0.4 * Math.sin(TAU * 16 * t)); // クレッシェンド
+  }
+  tone(timp, SR, { type: "sine", freq: 98, t0: 0, dur: 0.6, gain: 0.5, decay: 0.3 }); // G2の芯
+  // 各ヒットにもティンパニのアクセント
+  [0.5, 0.78, 1.06].forEach((t0) =>
+    tone(timp, SR, { type: "sine", freq: 98, t0, dur: 0.3, gain: 0.45, attack: 0.002, decay: 0.12 }));
+  lowpass(timp, 280, SR);
+  mixInto(b, timp, 1.1);
+  // ブラスヒットの和音連打（短い2発→フィナーレの大和音）
+  const hit = (t0, dur, gain) =>
+    [0, 4, 7, 12].forEach((s) => brassTone(b, SR, { freq: semis(root, s), t0, dur, gain }));
+  hit(0.5, 0.22, 0.15);
+  hit(0.78, 0.22, 0.15);
+  [0, 4, 7, 12, 16, 19].forEach((s) =>
+    brassTone(b, SR, { freq: semis(root, s), t0: 1.06, dur: 1.8, gain: 0.11, vib: 5.5 }));
+  // フィナーレの上できらめくベル（シンバルの代わりの高域の華）
+  bellTone(b, SR, { freq: semis(root, 24), t0: 1.06, gain: 0.09, dur: 1.5 });
+  bellTone(b, SR, { freq: semis(root, 31), t0: 1.25, gain: 0.06, dur: 1.3 });
+  lowpass(b, 3600, SR);
+  const wet = reverb(b, SR, { decay: 3.0, mix: 0.5 });
+  console.log("✔", writeWav("fanfare_win_orch.wav", normalize(wet, 0.9), SR));
+}
+
+// --- 案C オーケストラ：敗北（低いティンパニの一撃＋暗い弦パッド様の下降） ---
+{
+  const b = blank(2.8, SR), root = 392;
+  const timp = blank(2.8, SR);
+  for (let i = 0; i < (0.4 * SR) | 0; i++) { const t = i / SR; timp[i] += noise() * 0.8 * Math.exp(-t / 0.13); }
+  tone(timp, SR, { type: "sine", freq: 73.4, t0: 0, dur: 0.8, gain: 0.7, decay: 0.35 }); // D2の沈む一撃
+  lowpass(timp, 240, SR);
+  mixInto(b, timp, 1.0);
+  // 既定案と同じ下降音形を弦パッド様（デチューンtri＋オクターブ下）に厚く
+  [0, -3, -7, -12].forEach((s, i) => {
+    const f = semis(root, s), t0 = 0.15 + i * 0.2;
+    tone(b, SR, { type: "tri", freq: f, t0, dur: 0.8, gain: 0.16, vib: 4, decay: 0.6 });
+    tone(b, SR, { type: "tri", freq: f * 1.005, t0, dur: 0.8, gain: 0.1, vib: 4, decay: 0.6 });
+    tone(b, SR, { type: "sine", freq: f * 0.5, t0, dur: 0.9, gain: 0.1, decay: 0.7 });
+  });
+  // 暗いGマイナーの余韻
+  [-12, -9, -5].forEach((s) =>
+    tone(b, SR, { type: "tri", freq: semis(root, s), t0: 1.0, dur: 1.5, gain: 0.07, vib: 3.5, decay: 1.1 }));
+  lowpass(b, 1800, SR);
+  const wet = reverb(b, SR, { decay: 2.6, mix: 0.42 });
+  console.log("✔", writeWav("fanfare_lose_orch.wav", normalize(wet, 0.6), SR));
+}
+
+// --- 案C オーケストラ：完封レイヤー（スネアロール→上昇スウィープ→クラッシュ） ---
+{
+  const b = blank(3.1, SR);
+  // スネアロール（クレッシェンド・中域までにローパス）
+  const roll = blank(3.1, SR);
+  for (let i = 0; i < (0.9 * SR) | 0; i++) {
+    const t = i / SR, p = t / 0.9;
+    roll[i] += noise() * 0.4 * p * (0.5 + 0.5 * Math.sin(TAU * 24 * t));
+  }
+  lowpass(roll, 4000, SR);
+  mixInto(b, roll, 0.8);
+  // 上昇スウィープ（頂点へ向かう期待感）
+  for (let i = 0; i < (0.9 * SR) | 0; i++) {
+    const t = i / SR, p = t / 0.9;
+    b[i] += Math.sin(TAU * (600 + 2400 * p * p) * t) * 0.12 * p;
+  }
+  // 頂点のクラッシュ（ノイズ＋金属リングの余韻）
+  for (let i = (0.9 * SR) | 0; i < (2.2 * SR) | 0; i++) {
+    const t = (i - 0.9 * SR) / SR;
+    b[i] += noise() * 0.22 * Math.exp(-t / 0.5);
+  }
+  [3100, 4150, 5300, 6500].forEach((f, k) =>
+    tone(b, SR, { type: "sine", freq: f, t0: 0.9, dur: 1.6, gain: 0.1 / (1 + k * 0.35), attack: 0.002, decay: 0.5 }));
+  const wet = reverb(b, SR, { decay: 2.8, mix: 0.45 });
+  console.log("✔", writeWav("fanfare_shutout_orch.wav", normalize(wet, 0.6), SR));
+}
 
 console.log("→ 出力先:", OUT);
