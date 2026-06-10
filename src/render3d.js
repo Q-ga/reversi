@@ -32,7 +32,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92; // 黒石を黒く沈ませるため露出を下げる（旧1.05）
+  const BASE_EXPOSURE = 0.92; // 黒石を黒く沈ませるための基準露出（旧1.05）。明るさ設定の中点に対応
+  renderer.toneMappingExposure = BASE_EXPOSURE;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
   renderer.domElement.style.width = "100%";
@@ -636,6 +637,12 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     animateMove,
     applyEffects,
     setEffectsEnabled(on) { effectsEnabled = !!on; },
+    // 盤面の明るさ(0..1)を露出に反映する。0.5で基準露出（現状の見た目）、
+    // 0で-1段(×0.5)・1で+1段(×2)の指数マッピング（露出は乗算的な量のため知覚的に等間隔になる）。
+    setBoardBrightness(v) {
+      const b = typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5;
+      renderer.toneMappingExposure = BASE_EXPOSURE * Math.pow(2, (b - 0.5) * 2);
+    },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); container.removeChild(renderer.domElement); },
     THREE, scene, camera, renderer, stoneMap, cellToWorld, STONE_R, STONE_H,
   };
