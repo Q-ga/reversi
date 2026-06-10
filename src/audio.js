@@ -211,3 +211,36 @@ export function stopBgm() {
   }
   currentBgm = null;
 }
+
+// ===================== 終局音バリアント（#8・比較ビルド・追記ブロック） =====================
+// 豪華化案の音源を既存の読み込み機構へ追加し、EVENT_SOUND の終局系3タグの割り当てを
+// 選択中バリアント（theme_gameover.js）へ差し替える。既存の音・再生経路は一切変更しない。
+const GAMEOVER_SFX_FILES = {
+  fanfare_win_royal: "./audio/fanfare_win_royal.wav",
+  fanfare_lose_royal: "./audio/fanfare_lose_royal.wav",
+  fanfare_shutout_royal: "./audio/fanfare_shutout_royal.wav",
+  fanfare_win_orch: "./audio/fanfare_win_orch.wav",
+  fanfare_lose_orch: "./audio/fanfare_lose_orch.wav",
+  fanfare_shutout_orch: "./audio/fanfare_shutout_orch.wav",
+};
+// 先読み（冒頭の既存ループと同方式）。init() 前に届けば rawBuffers 経由で init がdecodeし、
+// init() 後に届いた分はここで直接decodeする（後着の取りこぼし防止）。
+for (const [k, url] of Object.entries(GAMEOVER_SFX_FILES)) {
+  fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => {
+    rawBuffers[k] = ab;
+    if (ctx) ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[k] = buf; }).catch(() => {});
+  }).catch(() => {});
+}
+
+// 終局系タグの音割り当てを差し替える。sounds: { タグ: [バッファ名, ゲイン] }
+// （theme_gameover.js のバリアント定義）。null・不正値は無視＝既定（現状の割り当て）のまま。
+// 対象タグは終局3種に固定し、出し分け構造（タグ集合）は増減させない。
+export function applyGameoverVariant(sounds) {
+  if (!sounds || typeof sounds !== "object") return;
+  for (const tag of ["gameover", "gameover-draw", "shutout"]) {
+    const e = sounds[tag];
+    if (Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "number") {
+      EVENT_SOUND[tag] = [e[0], e[1]];
+    }
+  }
+}

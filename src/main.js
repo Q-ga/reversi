@@ -13,6 +13,7 @@ import * as audio from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { registry, isDebugMode } from "./variants.js";
 import { mountDebugPanel } from "./debugpanel.js";
+import { registerGameoverTheme, gameoverSoundsFor } from "./theme_gameover.js";
 import { watchReducedMotion } from "./motion.js";
 import {
   listProfiles, addProfile, updateProfile, deleteProfile, addGame, listGames, MAX_PROFILES,
@@ -591,8 +592,10 @@ registry.register({
     { id: "b", label: "案B" },
   ],
 });
+registerGameoverTheme(registry); // 終局音テーマ（#8）。定義・解決は theme_gameover.js に閉じる
 const variantSelection = registry.resolve(location.search);
 document.documentElement.dataset.variantDemo = variantSelection.demo;
+audio.applyGameoverVariant(gameoverSoundsFor(registry, variantSelection)); // 選択中の終局音を適用
 // 切替パネルは ?debug=1 のときだけ生成する（フラグ無しではDOMに存在しない）
 if (isDebugMode(location.search)) {
   mountDebugPanel(registry, variantSelection);
