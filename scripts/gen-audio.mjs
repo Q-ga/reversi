@@ -233,3 +233,66 @@ const BR = 32000;
 
 
 console.log("→ 出力先:", OUT);
+
+// ===================== 着石音バリアント（比較ビルド・issue #6） =====================
+// 基音層（CONTEXT.md「基音層／上モノ層」）＝「重い石が響く盤に落ちる」質量感の複数案。
+// 現行 place.wav も案の一つ（既定）として残す。テーマ定義は src/theme_place.js。
+// 注意：noise() は非決定的なので、本スクリプトの全再実行は既存WAVのバイト列も変える。
+// 選定前に既存音を変えないため、生成後は新規3ファイル以外を git で復元すること。
+// 各案は再生長を変えてある（B=0.55s / C=0.32s / D=0.95s）——検証スクリプトが
+// CDP発音カウントでバッファ長から案を同定するための識別子を兼ねる。
+
+// 案B 重打（ドスッ）：質量極振り。柔らかい接触＋150→85Hzへ沈み込む低音の芯。
+{
+  const b = blank(0.55, SR);
+  // 柔らかい接触ノイズ（高域を強く削る＝鋭さよりも重さを出す）
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.7 * Math.exp(-t / 0.008); }
+  lowpass(b, 2200, SR);
+  // 沈み込む低音（150→85Hzのピッチ落下＝着地の沈み。位相連続の手書きスウィープ）
+  const sw = (0.16 * SR) | 0;
+  let ph = 0;
+  for (let i = 0; i < sw; i++) {
+    const t = i / SR, p = t / 0.16;
+    ph += (TAU * (150 - 65 * p)) / SR;
+    b[i] += Math.sin(ph) * 0.85 * Math.min(1, t / 0.004) * Math.exp(-t / 0.07);
+  }
+  tone(b, SR, { type: "sine", freq: 210, t0: 0, dur: 0.14, gain: 0.35, decay: 0.045 });   // 木盤の低い共鳴
+  tone(b, SR, { type: "sine", freq: 95, t0: 0.012, dur: 0.30, gain: 0.4, attack: 0.006, decay: 0.13 }); // 質量のボディ
+  tone(b, SR, { type: "sine", freq: 62, t0: 0.018, dur: 0.34, gain: 0.22, attack: 0.008, decay: 0.16 }); // 最低域の余韻
+  tone(b, SR, { type: "sine", freq: 760, t0: 0, dur: 0.05, gain: 0.18, attack: 0.001, decay: 0.014 });  // 小型スピーカー用の芯
+  const wet = reverb(b, SR, { decay: 1.3, mix: 0.22 });
+  console.log("✔", writeWav("place_b.wav", normalize(wet, 0.97), SR));
+}
+
+// 案C 硬質（カッ）：石と漆盤の硬い打撃。ドライ・残響最小＝張り詰めた高級感。
+{
+  const b = blank(0.32, SR);
+  // 硬い打撃トランジェント（高域までしっかり残す）
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.9 * Math.exp(-t / 0.003); }
+  lowpass(b, 9000, SR);
+  // 石どうしの高い打音（非整数比の短いクリック）
+  tone(b, SR, { type: "sine", freq: 3150, t0: 0, dur: 0.030, gain: 0.3, attack: 0.0003, decay: 0.007 });
+  tone(b, SR, { type: "sine", freq: 4480, t0: 0, dur: 0.022, gain: 0.16, attack: 0.0003, decay: 0.005 });
+  tone(b, SR, { type: "sine", freq: 1180, t0: 0, dur: 0.05, gain: 0.5, decay: 0.016 });   // カチッの主役
+  tone(b, SR, { type: "sine", freq: 330, t0: 0, dur: 0.09, gain: 0.34, decay: 0.03 });    // 痩せ防止のボディ
+  tone(b, SR, { type: "sine", freq: 150, t0: 0.008, dur: 0.12, gain: 0.18, attack: 0.003, decay: 0.05 }); // 小さな低音の点
+  const wet = reverb(b, SR, { decay: 0.7, mix: 0.1 }); // ドライ寄り
+  console.log("✔", writeWav("place_c.wav", normalize(wet, 0.95), SR));
+}
+
+// 案D 響盤（コォン）：盤の共鳴モードが長めに鳴り、ホール残響で余韻を引く。
+{
+  const b = blank(0.95, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.6 * Math.exp(-t / 0.005); }
+  lowpass(b, 5200, SR);
+  // アタックは現行よりわずかに柔らかく（余韻を主役にする）
+  tone(b, SR, { type: "sine", freq: 1900, t0: 0, dur: 0.05, gain: 0.22, attack: 0.0006, decay: 0.013 });
+  tone(b, SR, { type: "sine", freq: 880, t0: 0, dur: 0.07, gain: 0.42, decay: 0.022 });
+  // 盤の共鳴モード（互いに非整数比の中低域が長めに鳴る＝「響く盤」）
+  tone(b, SR, { type: "sine", freq: 243, t0: 0.004, dur: 0.55, gain: 0.34, attack: 0.003, decay: 0.16, vib: 3 });
+  tone(b, SR, { type: "sine", freq: 367, t0: 0.006, dur: 0.45, gain: 0.2, attack: 0.003, decay: 0.12, vib: 2 });
+  tone(b, SR, { type: "sine", freq: 512, t0: 0.008, dur: 0.35, gain: 0.12, attack: 0.003, decay: 0.09 });
+  tone(b, SR, { type: "sine", freq: 118, t0: 0.015, dur: 0.30, gain: 0.22, attack: 0.005, decay: 0.12 }); // 床を支える低音
+  const wet = reverb(b, SR, { decay: 2.4, mix: 0.42 });
+  console.log("✔", writeWav("place_d.wav", normalize(wet, 0.95), SR));
+}
