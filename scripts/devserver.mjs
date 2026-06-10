@@ -7,7 +7,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
-const PORT = 8765;
+const PORT = Number(process.env.PORT) || 8765; // 環境変数で上書き可（worktree並行検証用）。既定は8765
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript",
   ".json": "application/json", ".webmanifest": "application/manifest+json",
