@@ -13,6 +13,7 @@ import * as audio from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { registry, isDebugMode } from "./variants.js";
 import { mountDebugPanel } from "./debugpanel.js";
+import { watchReducedMotion } from "./motion.js";
 import {
   listProfiles, addProfile, updateProfile, deleteProfile, addGame, listGames, MAX_PROFILES,
 } from "./storage.js";
@@ -27,6 +28,13 @@ let match = null; // { assignment, mode, level, hints, startedAt, moves }
 let state = null;
 let view = null; // three.jsの盤ビュー（初回startMatchで生成し再利用）
 let appSettings = loadSettings(); // 永続化された設定（音量・ミュート・エフェクト演出）。doMove等から参照
+// 酔い対策：OSの「視差効果を減らす」(prefers-reduced-motion: reduce)を検知し、シェイク・ジッタ等の
+// 動きの強い演出を自動抑制する。変更イベントにも追随（盤ビューがあれば即反映、無ければ次のstartMatchで反映）。
+// エフェクト演出トグルとは独立した軸で、appSettings.effectsOn は書き換えない。
+let osReducedMotion = watchReducedMotion((m) => {
+  osReducedMotion = m;
+  if (view) view.setReducedMotion(m);
+});
 let busy = false;
 let cpuTimerId = null;
 let hintTimerId = null;       // 合法手ヒントの表示を少し遅らせるためのタイマー
@@ -143,6 +151,8 @@ function startMatch(cfg) {
     if (location.search.includes("slow")) window.__view = view; // デバッグ用
   }
   view.setEffectsEnabled(appSettings.effectsOn); // 設定のエフェクト演出ON/OFFを反映
+  view.setReducedMotion(osReducedMotion);        // OSの酔い対策設定を反映（トグルとは独立）
+  view.setBoardBrightness(appSettings.boardBrightness); // 設定の盤面の明るさを露出へ反映
   showScreen("game");
   view.sync(state, match.hints);
   renderPanels();
@@ -392,6 +402,8 @@ function syncSettingsUI() {
   $("set-sfx-vol").value = Math.round(appSettings.sfxVol * 100);
   $("set-bgm-val").textContent = pct(appSettings.bgmVol);
   $("set-sfx-val").textContent = pct(appSettings.sfxVol);
+  $("set-board-bright").value = Math.round(appSettings.boardBrightness * 100);
+  $("set-board-bright-val").textContent = pct(appSettings.boardBrightness);
 }
 // 音声へ反映（init前でも内部値だけ更新され、init時に初期ゲインへ反映される）
 audio.setBgmEnabled(appSettings.bgmOn);
@@ -437,6 +449,14 @@ $("set-sfx-vol").addEventListener("input", (e) => {
   $("set-sfx-val").textContent = pct(v);
 });
 $("set-sfx-vol").addEventListener("change", persist);
+// 盤面の明るさスライダー：ドラッグ中(input)は露出へ即時反映、確定(change)で保存
+$("set-board-bright").addEventListener("input", (e) => {
+  const v = e.target.value / 100;
+  appSettings = { ...appSettings, boardBrightness: v };
+  if (view) view.setBoardBrightness(v); // 盤ビュー未生成なら次のstartMatchで反映
+  $("set-board-bright-val").textContent = pct(v);
+});
+$("set-board-bright").addEventListener("change", persist);
 // エフェクト演出：盤ビューがあれば即反映（無ければ次のstartMatchで反映）
 $("set-effects-on").addEventListener("change", (e) => {
   appSettings = { ...appSettings, effectsOn: e.target.checked };

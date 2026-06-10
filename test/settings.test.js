@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULTS, normalizeSettings, effectiveGain } from "../src/settings.js";
 
-test("normalizeSettings: 入力なしで既定値（音量100%・全ON）", () => {
+test("normalizeSettings: 入力なしで既定値（音量100%・全ON・明るさ中点）", () => {
   assert.deepEqual(normalizeSettings(), {
-    bgmVol: 1, sfxVol: 1, bgmOn: true, sfxOn: true, effectsOn: true,
+    bgmVol: 1, sfxVol: 1, bgmOn: true, sfxOn: true, effectsOn: true, boardBrightness: 0.5,
   });
   assert.deepEqual(normalizeSettings(), DEFAULTS);
 });
@@ -64,4 +64,31 @@ test("loadSettings: 値が無ければ既定値", () => {
 
 test("loadSettings: 壊れたJSONでも例外を投げず既定値", () => {
   assert.deepEqual(loadSettings(fakeStorage({ [STORAGE_KEY]: "{bad json" })), DEFAULTS);
+});
+
+// ============ 盤面の明るさ（boardBrightness）============
+// 0..1 の連続値。0.5 が中点＝現状の露出（未操作時の見た目は現状と完全一致）。
+
+test("boardBrightness: 既定値は0.5（未操作時は現状の露出と一致）", () => {
+  assert.equal(DEFAULTS.boardBrightness, 0.5);
+  assert.equal(normalizeSettings().boardBrightness, 0.5);
+  assert.equal(normalizeSettings({ bgmVol: 0.3 }).boardBrightness, 0.5); // 未指定→既定
+});
+
+test("boardBrightness: 範囲外は[0,1]にクランプ", () => {
+  assert.equal(normalizeSettings({ boardBrightness: 1.7 }).boardBrightness, 1);
+  assert.equal(normalizeSettings({ boardBrightness: -3 }).boardBrightness, 0);
+});
+
+test("boardBrightness: 不正な型・破損入力は既定値0.5に復帰", () => {
+  assert.equal(normalizeSettings({ boardBrightness: "bright" }).boardBrightness, 0.5);
+  assert.equal(normalizeSettings({ boardBrightness: NaN }).boardBrightness, 0.5);
+  assert.equal(normalizeSettings({ boardBrightness: true }).boardBrightness, 0.5);
+  assert.equal(normalizeSettings(null).boardBrightness, 0.5);
+});
+
+test("boardBrightness: saveSettings→loadSettings で保持される", () => {
+  const st = fakeStorage();
+  saveSettings({ boardBrightness: 0.8 }, st);
+  assert.equal(loadSettings(st).boardBrightness, 0.8);
 });
