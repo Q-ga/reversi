@@ -10,6 +10,7 @@ import { OutputPass } from "../vendor/jsm/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "../vendor/jsm/environments/RoomEnvironment.js";
 import { SIZE, EMPTY, BLACK, legalMoves } from "./rules.js";
 import { motionPolicy } from "./motion.js";
+import { normalizeFlipTiming } from "./theme_timing.js";
 
 const BOARD = 10; // 盤プレーンのワールドサイズ
 // 提供画像(1254px)の金グリッド線位置 → マス中心の正規化座標(0..1)
@@ -27,7 +28,12 @@ function cellToWorld(r, c) {
   return { x, z };
 }
 
-export function createBoardView(container, onCell, textureUrl = "./textures/board.png") {
+// flipTiming: めくりタイミング・プリセット（theme_timing.js。比較ビルドで切替）。
+// 未指定・不正値はキー単位で既定値（現状）へフォールバックする。
+export function createBoardView(container, onCell, textureUrl = "./textures/board.png", flipTiming = null) {
+  // めくり（連鎖めくり）の時間だけをプリセットで差し替える。
+  // アニメの構造（逐次・イージング・変動則）と着手の溜めはプリセットに依らず不変。
+  const FT = normalizeFlipTiming(flipTiming);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
@@ -470,9 +476,9 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   const LIFT = STONE_R * 2.2;        // 着手ドロップインの基準高さ
   const FLIP_LIFT = STONE_R * 3.8;   // ② めくりの浮上は全体的に高く
   const HOVER = STONE_R * 2.4;       // ① 出現時の空中静止高さ
-  const HOLD_MS = 135;               // 溜め時間（着手・めくり号砲の目安）
+  const HOLD_MS = 135;               // 着手の溜めの保持時間（既存の看板。プリセット対象外）
   const FREEZE_MS = 760;             // ④ 角/大量返し：着地後フリーズ（演出が終わる頃）→めくり
-  const PRE_FLIP_MS = 190;           // 通常手：着地後に一拍おいてから号砲（隅以外でも溜め）
+  // めくり側の溜め・号砲前遅延などの時間は FT（めくりタイミング・プリセット）から取る。
 
   // ① 着手の溜め：盤の真上に出現(フッ)→空中で静止(溜め)→落下＋着地(コツ)。
   function placeWithAnticipation(group, color, { onAppear, onLand } = {}) {
@@ -507,7 +513,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   }
 
   // フォロワー（2枚目以降）の裏返し：浮上しながらZ軸180°回転して着地。浮上は高め。
-  function flipStone(entry, toColor, dur = 520) {
+  function flipStone(entry, toColor, dur = FT.followMs) {
     const from = entry.group.rotation.z;
     const to = colorToFlip(toColor);
     entry.color = toColor;
@@ -526,7 +532,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     const to = colorToFlip(toColor);
     entry.color = toColor;
     const restY = STONE_H / 2;
-    const LIFT_MS = 150 * SPEED, HOLD = HOLD_MS * SPEED, ROT_MS = 360 * SPEED;
+    const LIFT_MS = FT.liftMs * SPEED, HOLD = FT.holdMs * SPEED, ROT_MS = FT.rotMs * SPEED;
     const total = LIFT_MS + HOLD + ROT_MS;
     addTween(total, (p) => {
       const t = p * total;
@@ -595,7 +601,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
             shakeCamera(isCorner ? 1.25 : 0.9, isCorner ? 560 : 480); // 画面揺れを強く
             setTimeout(runFlips, FREEZE_MS * SPEED);   // フリーズ：演出が終わってからめくり
           } else {
-            setTimeout(runFlips, PRE_FLIP_MS * SPEED);  // 通常手：一拍おいてから号砲（溜め）
+            setTimeout(runFlips, FT.preFlipMs * SPEED); // 通常手：一拍おいてから号砲（溜め）
           }
         },
       });
@@ -613,8 +619,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
           else if (onFlipLand) onFlipLand(idx);
         }
         // フォロワー（2枚目以降）は号砲が回り始める頃から距離順に波状
-        const followerStart = (150 + HOLD_MS) * SPEED;
-        const stepMs = 95 * SPEED;
+        const followerStart = (FT.liftMs + FT.holdMs) * SPEED;
+        const stepMs = FT.stepMs * SPEED;
         let maxFollowers = 0;
         for (let j = 1; ; j++) {
           const wave = groups.map((g) => g[j]).filter(Boolean);
@@ -631,8 +637,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
           }
         }
         // 完了予約：号砲終端とフォロワー終端の遅い方＋余韻
-        const leadEnd = (150 + HOLD_MS + 360) * SPEED;
-        const followerEnd = maxFollowers >= 1 ? followerStart + (maxFollowers - 1) * stepMs + 520 * SPEED : 0;
+        const leadEnd = (FT.liftMs + FT.holdMs + FT.rotMs) * SPEED;
+        const followerEnd = maxFollowers >= 1 ? followerStart + (maxFollowers - 1) * stepMs + FT.followMs * SPEED : 0;
         setTimeout(resolve, Math.max(leadEnd, followerEnd) + 320 * SPEED);
       }
     });

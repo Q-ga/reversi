@@ -12,6 +12,7 @@ import { buildCSV, buildJSON } from "./exporter.js";
 import * as audio from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { registry, isDebugMode } from "./variants.js";
+import { FLIP_TIMING_THEME } from "./theme_timing.js";
 import { mountDebugPanel } from "./debugpanel.js";
 import { watchReducedMotion } from "./motion.js";
 import {
@@ -147,7 +148,9 @@ function startMatch(cfg) {
   match = { ...cfg, startedAt: Date.now(), moves: [] };
   state = newGame(BLACK);
   if (!view) {
-    view = createBoardView($("board3d"), onCell);
+    // めくりタイミング・プリセット（比較ビルド）を盤ビューへ。未指定・不正IDは既定（現状）。
+    view = createBoardView($("board3d"), onCell, undefined,
+      registry.variantOf("flipTiming", variantSelection)?.timing);
     if (location.search.includes("slow")) window.__view = view; // デバッグ用
   }
   view.setEffectsEnabled(appSettings.effectsOn); // 設定のエフェクト演出ON/OFFを反映
@@ -591,6 +594,9 @@ registry.register({
     { id: "b", label: "案B" },
   ],
 });
+// めくりタイミング・プリセット（issue #10）：現状／中間／重み増し（仮説）／重み最大の4案。
+// 適用は startMatch の createBoardView（盤ビュー生成時に timing を渡す）。
+registry.register(FLIP_TIMING_THEME);
 const variantSelection = registry.resolve(location.search);
 document.documentElement.dataset.variantDemo = variantSelection.demo;
 // 切替パネルは ?debug=1 のときだけ生成する（フラグ無しではDOMに存在しない）
