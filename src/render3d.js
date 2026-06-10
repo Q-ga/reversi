@@ -116,10 +116,12 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
 
   // 黒=上半分（上面＝顔テクスチャ／側面＝黒）、白=下半分（下面＝顔テクスチャ／側面＝白）
   // roughnessを上げてマット化＝鏡面ハイライト(灰色のテカリ)を消し、より黒く見せる
-  const blackFaceMat = new THREE.MeshStandardMaterial({ map: blackFaceTex, roughness: 0.88, metalness: 0.0 });
-  const blackEdgeMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9, metalness: 0.0 });
-  const whiteFaceMat = new THREE.MeshStandardMaterial({ map: whiteFaceTex, roughness: 0.55, metalness: 0.0 });
-  const whiteEdgeMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.6, metalness: 0.0 });
+  // 既定（現状）案。比較ビルド（issue #9）では setStoneMaterialVariants がバリアント実装値を
+  // 受け取り、漆黒クリアコート／パール・磁器系の MeshPhysicalMaterial へ差し替える（letで持つ）。
+  let blackFaceMat = new THREE.MeshStandardMaterial({ map: blackFaceTex, roughness: 0.88, metalness: 0.0 });
+  let blackEdgeMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9, metalness: 0.0 });
+  let whiteFaceMat = new THREE.MeshStandardMaterial({ map: whiteFaceTex, roughness: 0.55, metalness: 0.0 });
+  let whiteEdgeMat = new THREE.MeshStandardMaterial({ color: 0xe9e7e0, roughness: 0.6, metalness: 0.0 });
 
   // 石ジオメトリ：上半分(黒)＋下半分(白)の2段円柱。赤道で黒白が分かれ、90°で半々の断面が出る。
   // CylinderGeometryのマテリアル配列順 = [側面, 上面cap, 下面cap]
@@ -140,10 +142,65 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     return g;
   }
 
-  // 合法手ヒント＝つやガラスのドーム（半透明・クリアコート・内外で微色相差）。
-  // 石は球っぽさを避ける設計なので、映り込み用envMapはシーン全体でなくヒント専用に持たせる。
-  const hintPmrem = new THREE.PMREMGenerator(renderer);
-  const hintEnv = hintPmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  // 環境マップ：同梱の RoomEnvironment から PMREM でプログラム生成（新規バイナリアセット不要）。
+  // クリアコート系の石バリアント（issue #9）の映り込みに使う。scene.environment には設定しない
+  // ＝マテリアル単位で渡し、盤や他オブジェクトへ映り込みを波及させない（黒石を黒く沈ませる設計の維持）。
+  //
+  // 部屋を傾ける理由：真上カメラでは石の平らな上面が「天頂」を鏡面反射するが、RoomEnvironment は
+  // 天頂(+y)に最強の面光源（強度100）を持つため、そのままでは黒石のクリアコートが天井光を直反射し
+  // 黒が浮く（CDP実測：envMapIntensity 0.02 でも黒石平均輝度 +20/255）。スタジオ撮影で光源を
+  // 鏡面方向から外すのと同じ要領で部屋ごと傾け、静止時の上面反射を暗い壁面へ向ける
+  // （実測：傾け後は envMapIntensity 0.3 でも +2.4/255。検証は scripts/check-stone-materials.mjs）。
+  const roomScene = new RoomEnvironment();
+  roomScene.rotation.x = 0.6; // ≈34°：天頂の主光源を鏡面方向から外す
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const roomEnvTex = pmrem.fromScene(roomScene, 0.04).texture;
+  pmrem.dispose();
+  roomScene.dispose();
+
+  // バリアント実装値（physical: clearcoat 等）から物理ベースの石マテリアル一式を作る。
+  // ベース色・顔テクスチャは現状のまま維持し、薄い艶層（clearcoat）と絞った映り込み
+  // （envMapIntensity）だけを足す＝「黒石を黒く沈ませる」既存設計を壊さない。
+  function buildStoneMats(isBlack, phys) {
+    const common = {
+      metalness: 0.0,
+      roughness: phys.roughness ?? (isBlack ? 0.88 : 0.55),
+      clearcoat: phys.clearcoat ?? 0,
+      clearcoatRoughness: phys.clearcoatRoughness ?? 0.3,
+      envMap: roomEnvTex,
+      envMapIntensity: phys.envMapIntensity ?? 0.3,
+    };
+    if (phys.iridescence) { // パール案のみ：薄い虹彩（真珠層）
+      common.iridescence = phys.iridescence;
+      common.iridescenceIOR = phys.iridescenceIOR ?? 1.3;
+    }
+    const face = new THREE.MeshPhysicalMaterial({ ...common, map: isBlack ? blackFaceTex : whiteFaceTex });
+    const edge = new THREE.MeshPhysicalMaterial({ ...common, color: isBlack ? 0x050505 : 0xe9e7e0 });
+    return { face, edge };
+  }
+
+  // 石マテリアル差し替えAPI（比較ビルド issue #9）。theme_stone.js のバリアント定義
+  // { black, white } を受け取る。physical を持たないバリアント（現状案）は既定のまま維持する。
+  // 以後の makeStone は新マテリアルを参照し、生成済みの石にも即反映する。
+  function setStoneMaterialVariants({ black, white } = {}) {
+    if (black?.physical) {
+      blackFaceMat.dispose(); blackEdgeMat.dispose();
+      ({ face: blackFaceMat, edge: blackEdgeMat } = buildStoneMats(true, black.physical));
+    }
+    if (white?.physical) {
+      whiteFaceMat.dispose(); whiteEdgeMat.dispose();
+      ({ face: whiteFaceMat, edge: whiteEdgeMat } = buildStoneMats(false, white.physical));
+    }
+    // 生成済みの石へ反映（makeStone と同じマテリアル配列順 = [側面, 上面cap, 下面cap]）
+    for (const { group } of stoneMap.values()) {
+      const [upper, lower] = group.children;
+      upper.material = [blackEdgeMat, blackFaceMat, blackEdgeMat];
+      lower.material = [whiteEdgeMat, whiteEdgeMat, whiteFaceMat];
+    }
+  }
+
+  // 合法手ヒント＝つやガラスのドーム（半透明・内外で微色相差）。
+  // 反射(clearcoat/envMap)は使わない設計（下のhintMatBaseコメント参照）。
 
   // ドーム形状：上半球を薄く潰した凸レンズ。裾は今より広げる（0.32→0.46）。
   const HINT_BASE_R = STONE_R * 0.54;   // 裾の半径
@@ -645,6 +702,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     animateMove,
     applyEffects,
     setEffectsEnabled(on) { effectsEnabled = !!on; },
+    setStoneMaterialVariants, // 石マテリアルのバリアント差し替え（比較ビルド issue #9）
     setReducedMotion(on) { reducedMotion = on === true; }, // OS設定由来の抑制（トグルとは独立）
     // 盤面の明るさ(0..1)を露出に反映する。0.5で基準露出（現状の見た目）、
     // 0で-1段(×0.5)・1で+1段(×2)の指数マッピング（露出は乗算的な量のため知覚的に等間隔になる）。

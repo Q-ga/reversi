@@ -12,6 +12,7 @@ import { buildCSV, buildJSON } from "./exporter.js";
 import * as audio from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { registry, isDebugMode } from "./variants.js";
+import { registerStoneThemes, resolveStoneVariants } from "./theme_stone.js";
 import { mountDebugPanel } from "./debugpanel.js";
 import { watchReducedMotion } from "./motion.js";
 import {
@@ -148,6 +149,8 @@ function startMatch(cfg) {
   state = newGame(BLACK);
   if (!view) {
     view = createBoardView($("board3d"), onCell);
+    // 石マテリアルの比較ビルド（issue #9）：URLで選択中のバリアントを盤ビューへ適用
+    view.setStoneMaterialVariants(resolveStoneVariants(registry, variantSelection));
     if (location.search.includes("slow")) window.__view = view; // デバッグ用
   }
   view.setEffectsEnabled(appSettings.effectsOn); // 設定のエフェクト演出ON/OFFを反映
@@ -591,6 +594,8 @@ registry.register({
     { id: "b", label: "案B" },
   ],
 });
+// 石マテリアル（黒=漆黒クリアコート系／白=パール・磁器系）。定義は theme_stone.js（issue #9）
+registerStoneThemes(registry);
 const variantSelection = registry.resolve(location.search);
 document.documentElement.dataset.variantDemo = variantSelection.demo;
 // 切替パネルは ?debug=1 のときだけ生成する（フラグ無しではDOMに存在しない）
