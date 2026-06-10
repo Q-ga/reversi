@@ -231,5 +231,72 @@ const BR = 32000;
   console.log("✔", writeWav("bgm_close.wav", normalize(seamless(b, BR), 0.85), BR));
 }
 
+// ===================== めくり音バリアント（issue #7・基音層/上モノ層） =====================
+// CONTEXT.md「基音層/上モノ層」。基音層＝flip_land の質感違い（石/硝子）、上モノ層＝連鎖
+// エスカレーション演出（キラリ/燃焼/ハープ）。テーマ定義は src/theme_flip.js、再生は src/audio.js。
+// 既存ブロックには触れない追記。各案ともこの DSP 定義から `node scripts/gen-audio.mjs` で再現生成できる。
+
+// 基音バリアント(石)：木より硬く締まった「カッ」。芯が高く減衰が速い・非整数倍音で石の鳴り。
+{
+  const b = blank(0.11, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.5 * Math.exp(-t / 0.004); } // 硬いクリック
+  lowpass(b, 5200, SR);
+  tone(b, SR, { type: "sine", freq: 1050, t0: 0, dur: 0.05, gain: 0.5, decay: 0.014 });  // 硬い芯
+  tone(b, SR, { type: "sine", freq: 1709, t0: 0, dur: 0.04, gain: 0.22, decay: 0.010 }); // 非整数倍音＝石の鳴り
+  tone(b, SR, { type: "sine", freq: 420, t0: 0, dur: 0.08, gain: 0.4, decay: 0.03 });    // 締まったボディ
+  console.log("✔", writeWav("flip_land_stone.wav", normalize(b, 0.85), SR));
+}
+
+// 基音バリアント(硝子)：磁器/硝子の澄んだ「チン」。非整数比の上音＋極小チック、下支えの低音少々。
+{
+  const b = blank(0.16, SR);
+  for (let i = 0; i < b.length; i++) { const t = i / SR; b[i] += noise() * 0.18 * Math.exp(-t / 0.002); } // 極小チック
+  tone(b, SR, { type: "sine", freq: 1860, t0: 0, dur: 0.10, gain: 0.5, decay: 0.030 });  // 澄んだ芯
+  tone(b, SR, { type: "sine", freq: 2794, t0: 0, dur: 0.08, gain: 0.3, decay: 0.022 });  // 非整数比の上音＝硝子
+  tone(b, SR, { type: "sine", freq: 4470, t0: 0, dur: 0.05, gain: 0.14, decay: 0.014 }); // きらめき
+  tone(b, SR, { type: "sine", freq: 620, t0: 0, dur: 0.07, gain: 0.22, decay: 0.025 });  // 触感の下支え
+  console.log("✔", writeWav("flip_land_glass.wav", normalize(b, 0.8), SR));
+}
+
+// 上モノ(キラリ)：短い高域ベル（基音＋5度＋オクターブ）。再生レートを上げて積み上がる前提の素材。
+{
+  const b = blank(0.22, SR);
+  tone(b, SR, { type: "sine", freq: 2093, t0: 0, dur: 0.16, gain: 0.5, attack: 0.001, decay: 0.05 });  // C7
+  tone(b, SR, { type: "sine", freq: 3136, t0: 0, dur: 0.12, gain: 0.28, attack: 0.001, decay: 0.04 }); // G7（5度＝きらめき）
+  tone(b, SR, { type: "sine", freq: 4186, t0: 0, dur: 0.08, gain: 0.16, attack: 0.001, decay: 0.03 }); // C8
+  for (let i = 0; i < (0.03 * SR) | 0; i++) { const t = i / SR; b[i] += noise() * 0.10 * Math.exp(-t / 0.008); } // 粒
+  console.log("✔", writeWav("flip_top_spark.wav", normalize(b, 0.6), SR));
+}
+
+// 上モノ(燃焼)：大量返しの後半で重ねる「ボッ」という炎の気配。ゆらぎ付きノイズ＋熱の低い芯。
+{
+  const b = blank(0.35, SR);
+  for (let i = 0; i < b.length; i++) {
+    const t = i / SR;
+    b[i] += noise() * 0.5 * Math.exp(-t / 0.12) * (0.6 + 0.4 * Math.sin(TAU * 28 * t)); // 炎のゆらぎ
+  }
+  lowpass(b, 2600, SR);
+  tone(b, SR, { type: "sine", freq: 140, t0: 0, dur: 0.3, gain: 0.2, attack: 0.01, decay: 0.12 }); // 熱の芯
+  console.log("✔", writeWav("flip_top_flame.wav", normalize(b, 0.6), SR));
+}
+
+// 上モノ(ハープ)：Karplus-Strong の爪弾き1音（C5）。再生レートでペンタトニックを駆け上がる素材。
+{
+  const f0 = 523.25; // C5
+  const N = Math.round(SR / f0);
+  const b = blank(0.6, SR);
+  const dl = new Float32Array(N);
+  for (let i = 0; i < N; i++) dl[i] = noise(); // 弦の初期励振
+  let idx = 0;
+  for (let i = 0; i < b.length; i++) {
+    const cur = dl[idx], nxt = dl[(idx + 1) % N];
+    dl[idx] = (cur + nxt) * 0.498; // 弦内のローパス減衰
+    b[i] = cur;
+    idx = (idx + 1) % N;
+  }
+  for (let i = 0; i < (0.002 * SR) | 0; i++) b[i] *= i / (0.002 * SR); // アタックを丸めて上品に
+  lowpass(b, 5200, SR);
+  console.log("✔", writeWav("flip_top_harp.wav", normalize(b, 0.7), SR));
+}
 
 console.log("→ 出力先:", OUT);
