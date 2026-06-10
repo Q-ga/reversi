@@ -9,6 +9,7 @@ import { UnrealBloomPass } from "../vendor/jsm/postprocessing/UnrealBloomPass.js
 import { OutputPass } from "../vendor/jsm/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "../vendor/jsm/environments/RoomEnvironment.js";
 import { SIZE, EMPTY, BLACK, legalMoves } from "./rules.js";
+import { motionPolicy } from "./motion.js";
 
 const BOARD = 10; // 盤プレーンのワールドサイズ
 // 提供画像(1254px)の金グリッド線位置 → マス中心の正規化座標(0..1)
@@ -48,6 +49,10 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   // OFF時は applyEffects を無効化し、角/大量返しのヒットストップ（フリーズ・揺れ）も止める。
   // 石を置く・めくる基本アニメと、文字での告知は残る。
   let effectsEnabled = true;
+  // 酔い対策：OSの「視差効果を減らす」(prefers-reduced-motion)由来の抑制。本人のトグルとは独立。
+  // 有効時はスクリーンシェイク・置石ジッタ等の動きの強い演出だけを止め、光・基本アニメ・文字告知は残す。
+  let reducedMotion = false;
+  const policy = () => motionPolicy({ effectsOn: effectsEnabled, reducedMotion });
 
   // カメラ：真上から見下ろし（ごく僅かに寄せて浮上した石が分かる程度）
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
@@ -394,6 +399,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   let shaking = false;
   // 方向性のある減衰振動＝「ガクッ」と大きく揺れて収まる（毎フレーム乱数より視認しやすい）。
   function shakeCamera(intensity = 0.13, dur = 280) {
+    if (!policy().strongMotion) return; // 酔い対策：reduced-motion時はスクリーンシェイクを出さない
     if (shaking) return;
     shaking = true;
     const bx = camera.position.x, bz = camera.position.z;
@@ -415,7 +421,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     }
   }
   function applyEffects(tags, ctx = {}) {
-    if (!effectsEnabled) return; // スポット演出OFF：光・決め演出を出さない
+    if (!policy().spotEffects) return; // スポット演出OFF：光・決め演出を出さない
     const pos = ctx.r != null ? cellToWorld(ctx.r, ctx.c) : { x: 0, z: 0 };
     for (const tag of tags) {
       switch (tag) {
@@ -543,6 +549,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
   // ④ ヒットストップの揺れ：置石を盤面内で小刻みに振動（二重指数の減衰でメリハリ）。
   // 第1相の減衰を緩め、複数フレームにわたって大きく揺れる＝はっきり視認できる速さに。
   function jitterStone(group) {
+    if (!policy().strongMotion) return; // 酔い対策：reduced-motion時は置石ジッタを出さない
     const restX = group.position.x, restZ = group.position.z;
     const DUR = 650 * SPEED;
     const A1 = STONE_R * 0.5, A2 = STONE_R * 0.16; // 第1相(大・速)＋第2相(小・遅)
@@ -575,7 +582,8 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
       }
       const isCorner = (move.r === 0 || move.r === SIZE - 1) && (move.c === 0 || move.c === SIZE - 1);
       // ④ 角／大量返しはフリーズ→演出後にめくり。エフェクト演出OFF時は決め演出をやめ通常手と同じ流れに。
-      const special = effectsEnabled && (isCorner || isBig);
+      // reduced-motion時はフリーズ・光・音は残し、シェイク・ジッタだけが各関数内で抑制される。
+      const special = policy().spotEffects && (isCorner || isBig);
 
       placeWithAnticipation(placed.group, color, {
         onAppear,
@@ -637,6 +645,7 @@ export function createBoardView(container, onCell, textureUrl = "./textures/boar
     animateMove,
     applyEffects,
     setEffectsEnabled(on) { effectsEnabled = !!on; },
+    setReducedMotion(on) { reducedMotion = on === true; }, // OS設定由来の抑制（トグルとは独立）
     // 盤面の明るさ(0..1)を露出に反映する。0.5で基準露出（現状の見た目）、
     // 0で-1段(×0.5)・1で+1段(×2)の指数マッピング（露出は乗算的な量のため知覚的に等間隔になる）。
     setBoardBrightness(v) {
