@@ -1,9 +1,10 @@
-// 比較ビルド基盤のE2E検証（issue #2）：
-//   ①フラグ無しでは切替パネルがDOMに存在しない（ダミーテーマは既定値a）
-//   ②URLパラメータ ?variant=demo:b でバリアント直接指定できる
-//   ③不正ID（?variant=demo:zzz）は既定値へフォールバック
+// 比較ビルド基盤のE2E検証（issue #2。ダミーテーマ demo は #6 で実テーマ placeSound に交代済み）：
+//   ①フラグ無しでは切替パネルがDOMに存在しない
+//   ②URLパラメータ ?variant=placeSound:mass でバリアント直接指定できる（パネルのselectに反映）
+//   ③不正ID（?variant=placeSound:zzz）は既定値へフォールバック
 //   ④?debug=1 でのみパネルが表示される
 //   ⑤パネルで切替→URL更新＆リロード→選択が適用される
+//   ※音が実際に切り替わることの検証（発音カウント）は check-place-sound.mjs が担う。
 // devserver(8765固定)とは別に、ポート8772の内蔵静的サーバを使う（他エージェントと衝突回避）。
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -55,12 +56,12 @@ const evalIn = async (send, expr) => {
   return r.result?.result?.value;
 };
 
-// 現在ページのパネル有無・ダミーテーマ適用値・select値・URLを観測する共通式
+// 現在ページのパネル有無・着石音テーマのselect値（と選択肢数）・URLを観測する共通式
 const OBSERVE = `({
   url: location.href,
   panel: !!document.getElementById('variant-panel'),
-  demo: document.documentElement.dataset.variantDemo,
-  select: document.querySelector('#variant-panel select[data-theme="demo"]')?.value ?? null,
+  select: document.querySelector('#variant-panel select[data-theme="placeSound"]')?.value ?? null,
+  options: document.querySelectorAll('#variant-panel select[data-theme="placeSound"] option').length,
 })`;
 
 (async () => {
@@ -72,34 +73,34 @@ const OBSERVE = `({
     const send = cdp(w); await send("Runtime.enable"); await send("Page.enable");
     const goto = async (url, wait = 1400) => { await send("Page.navigate", { url }); await sleep(wait); };
 
-    // ① フラグ無し：パネル不在・ダミーテーマは既定値a
+    // ① フラグ無し：パネル不在（デバッグUIは本番に一切出ない）
     await sleep(1600);
     const r1 = await evalIn(send, OBSERVE);
-    check("① フラグ無しでパネル不在＆既定値a", r1.panel === false && r1.demo === "a", r1);
+    check("① フラグ無しでパネル不在", r1.panel === false, r1);
 
-    // ② URL直接指定：?variant=demo:b（debug無し→パネルは出ないが適用される）
-    await goto(`${BASE}/?variant=demo:b`);
+    // ② URL直接指定：?variant=placeSound:mass（パネルのselect初期値に反映される）
+    await goto(`${BASE}/?variant=placeSound:mass&debug=1`);
     const r2 = await evalIn(send, OBSERVE);
-    check("② ?variant=demo:b で案Bが適用", r2.panel === false && r2.demo === "b", r2);
+    check("② ?variant=placeSound:mass で案massが適用", r2.panel === true && r2.select === "mass", r2);
 
-    // ③ 不正ID：既定値へフォールバック
-    await goto(`${BASE}/?variant=demo:zzz`);
+    // ③ 不正ID：既定値（current）へフォールバック
+    await goto(`${BASE}/?variant=placeSound:zzz&debug=1`);
     const r3 = await evalIn(send, OBSERVE);
-    check("③ 不正IDは既定値aへフォールバック", r3.demo === "a", r3);
+    check("③ 不正IDは既定値currentへフォールバック", r3.select === "current", r3);
 
-    // ④ ?debug=1：パネル表示・selectは既定値a
+    // ④ ?debug=1：パネル表示・selectは既定値current・選択肢は3案以上（現状含む4案）
     await goto(`${BASE}/?debug=1`);
     const r4 = await evalIn(send, OBSERVE);
-    check("④ ?debug=1 でパネル表示＆select=a", r4.panel === true && r4.select === "a", r4);
+    check("④ ?debug=1 でパネル表示＆select=current＆4案", r4.panel === true && r4.select === "current" && r4.options === 4, r4);
 
-    // ⑤ パネルで案Bへ切替→URL更新＆リロード→適用される（debug=1は維持）
-    await evalIn(send, `(()=>{ const s=document.querySelector('#variant-panel select[data-theme="demo"]');
-      s.value='b'; s.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
+    // ⑤ パネルで案massへ切替→URL更新＆リロード→適用される（debug=1は維持）
+    await evalIn(send, `(()=>{ const s=document.querySelector('#variant-panel select[data-theme="placeSound"]');
+      s.value='mass'; s.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
     await sleep(1800); // location.assign によるリロード待ち
     const r5 = await evalIn(send, OBSERVE);
-    check("⑤ パネル切替→リロード後に案B適用＆URL更新",
-      r5.panel === true && r5.demo === "b" && r5.select === "b"
-      && r5.url.includes("variant=demo%3Ab") && r5.url.includes("debug=1"), r5);
+    check("⑤ パネル切替→リロード後に案mass適用＆URL更新",
+      r5.panel === true && r5.select === "mass"
+      && r5.url.includes("variant=placeSound%3Amass") && r5.url.includes("debug=1"), r5);
 
     const cap = await send("Page.captureScreenshot", { format: "png" });
     writeFileSync("/tmp/reversi-variants.png", Buffer.from(cap.result.data, "base64"));

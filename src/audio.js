@@ -107,7 +107,7 @@ function playBuffer(name, { rate = 1, gain = 1 } = {}) {
 // ---- 効果音 ----
 // ① 着手の溜め：出現の瞬間に「フッ」（極小・flip_lit流用）、着地の瞬間に「コツ」（主役・やや大きめ）
 export function playAppear() { playBuffer("flip_lift", { gain: 0.12 }); }
-export function playPlace() { playBuffer("place", { gain: 1.0 }); }
+export function playPlace() { playBuffer(placeSfxName(), { gain: 1.0 }); } // 着石音バリアント対応（末尾ブロック参照）
 // ② めくり：号砲の持ち上げで「スッ」を1回、各めくりの着地で「コツ」（連鎖で音程上昇）
 export function playFlipLift() { playBuffer("flip_lift", { gain: 0.22 }); }
 export function playFlipLand(i = 0) {
@@ -210,4 +210,37 @@ export function stopBgm() {
     delete bgmTracks[name];
   }
   currentBgm = null;
+}
+
+// ===================== 着石音バリアント（比較ビルド・issue #6） =====================
+// テーマ「placeSound」（src/theme_place.js）の選択を main.js から setPlaceVariant で注入する。
+// 既定（"place"＝現行）のままなら追加の通信・挙動変化は一切ない（選定までは本番の音を変えない）。
+// 既定以外が選ばれたときだけ、その案のWAVを遅延fetchして再生キーを差し替える。
+const PLACE_VARIANT_FILES = {
+  place_b: "./audio/place_b.wav", // 案B 重打（ドスッ）
+  place_c: "./audio/place_c.wav", // 案C 硬質（カッ）
+  place_d: "./audio/place_d.wav", // 案D 響盤（コォン）
+};
+let placeSfxKey = "place"; // playPlace が再生するバッファ名（既定＝現行 place.wav）
+
+// playPlace から呼ぶ再生キーの解決（関数宣言なので定義位置より前の playPlace からも安全）。
+// 選択した案の decode がまだなら現行音へフォールバックし、着地音の無音化を防ぐ。
+function placeSfxName() { return buffers[placeSfxKey] ? placeSfxKey : "place"; }
+
+// 着石音バリアントを切り替える。key は "place"（現行）か PLACE_VARIANT_FILES のキー。
+// 未知のキーは無視して現行のまま（レジストリ側で正規化済みだが、境界の二重ガード）。
+export function setPlaceVariant(key) {
+  if (key === "place") { placeSfxKey = "place"; return; }
+  const url = PLACE_VARIANT_FILES[key];
+  if (!url) return;
+  placeSfxKey = key;
+  if (rawBuffers[key]) return; // 取得済み（init() の一括decode対象に入っている）
+  fetch(`${url}?v=${AUDIO_VER}`)
+    .then((r) => r.arrayBuffer())
+    .then((ab) => {
+      rawBuffers[key] = ab;
+      // init() 済みなら即decode（init前なら init() 内の一括decodeに任せる）
+      if (ctx) ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[key] = buf; }).catch(() => {});
+    })
+    .catch(() => {});
 }
