@@ -1,8 +1,9 @@
-// アプリ全体の設定（音量・ミュート・エフェクト演出の表示可否）。
+// アプリ全体の設定（音量・ミュート・エフェクト演出の表示可否・盤面の明るさ）。
 // localStorage という信頼できない境界からの入力を normalizeSettings で必ず検証してから使う。
 
+// boardBrightness: 盤面の明るさ(0..1)。0.5が中点＝現状の露出（未操作時の見た目は現状と完全一致）。
 export const DEFAULTS = Object.freeze({
-  bgmVol: 1, sfxVol: 1, bgmOn: true, sfxOn: true, effectsOn: true,
+  bgmVol: 1, sfxVol: 1, bgmOn: true, sfxOn: true, effectsOn: true, boardBrightness: 0.5,
 });
 
 // マスター音量・ミュート・音量(0..1)から実効ゲインを求める（純粋）。
@@ -38,7 +39,7 @@ const clamp01 = (v, fallback) => (typeof v === "number" && Number.isFinite(v) ? 
 const asBool = (v, fallback) => (typeof v === "boolean" ? v : fallback);
 
 // 任意の入力を安全な設定オブジェクトに正規化する（純粋）。
-// 音量は[0,1]にクランプ、真偽値は型チェック、欠落・不正は既定値で補う。
+// 音量・明るさは[0,1]にクランプ、真偽値は型チェック、欠落・不正は既定値で補う。
 export function normalizeSettings(raw) {
   const r = raw && typeof raw === "object" ? raw : {};
   return {
@@ -47,5 +48,6 @@ export function normalizeSettings(raw) {
     bgmOn: asBool(r.bgmOn, DEFAULTS.bgmOn),
     sfxOn: asBool(r.sfxOn, DEFAULTS.sfxOn),
     effectsOn: asBool(r.effectsOn, DEFAULTS.effectsOn),
+    boardBrightness: clamp01(r.boardBrightness, DEFAULTS.boardBrightness),
   };
 }
