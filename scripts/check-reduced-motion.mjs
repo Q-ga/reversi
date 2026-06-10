@@ -9,13 +9,19 @@
 // 実行: node scripts/devserver.mjs を起動した上で node scripts/check-reduced-motion.mjs
 //       （worktree並行時は PORT=8774 node scripts/devserver.mjs ＋ APP_ORIGIN=http://localhost:8774）
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 9233;
 const APP = process.env.APP_ORIGIN || "http://localhost:8765";
 const URL_APP = `${APP}/?slow=1`; // ?slow= で window.__view が公開される
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// プロファイルは実行ごとに使い捨て（固定だと前回実行のlocalStorage＝フェーズEのエフェクトOFFが
+// 持ち越され、シェイク不発を「抑制成功」と誤判定する偽陽性を生む。冪等性のため毎回まっさらにする）
+const PROFILE = mkdtempSync(join(tmpdir(), "cdp-reversi-rm-"));
 const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${PORT}`,
-  "--no-first-run", "--user-data-dir=/tmp/cdp-reversi-reduced-motion", "--window-size=900,1500",
+  "--no-first-run", `--user-data-dir=${PROFILE}`, "--window-size=900,1500",
   URL_APP], { stdio: "ignore" });
 async function wsUrl() {
   for (let i = 0; i < 40; i++) { try { const r = await fetch(`http://localhost:${PORT}/json`); const l = await r.json();
@@ -89,6 +95,12 @@ const FIRED = 0.05, QUIET = 0.01; // 発火判定/静止判定のしきい値（
       `stoneMaxY=${probe.stoneMaxY} reduce=${probe.reduce} err=${JSON.stringify(probe.err)}`);
   };
   try {
+    // 接続先の検証：別ビルド（旧mainを配信中の :8765 等）を無言で測る事故を防ぐ
+    const mainSrc = await fetch(`${APP}/src/main.js`).then((r) => r.text()).catch(() => "");
+    if (!mainSrc.includes("watchReducedMotion")) {
+      throw new Error(`接続先 ${APP} が本ブランチのコードを配信していません。` +
+        "PORT=8774 node scripts/devserver.mjs を起動し、APP_ORIGIN=http://localhost:8774 で実行してください");
+    }
     const w = new WebSocket(await wsUrl());
     await new Promise((r) => w.addEventListener("open", r, { once: true }));
     const send = cdp(w); await send("Runtime.enable"); await send("Page.enable");
@@ -116,8 +128,15 @@ const FIRED = 0.05, QUIET = 0.01; // 発火判定/静止判定のしきい値（
     // E) reduce無し・エフェクト演出OFF → 発火しない（既存トグルの動作は不変）
     await evalIn(send, setEffectsToggle(false));
     judge("E reduce無し・トグルOFF→発火しない（既存粒度）", await evalIn(send, probeCorner(7, 0)), false);
+    await evalIn(send, setEffectsToggle(true)); // 後片付け：トグルを既定(ON)へ復元（状態を残さない）
 
     console.log(failed ? "RESULT: FAIL" : "RESULT: ALL PASS");
     w.close();
-  } catch (e) { console.error("ERR", e); failed = true; } finally { chrome.kill(); process.exit(failed ? 1 : 0); }
+  } catch (e) { console.error("ERR", e); failed = true; } finally {
+    chrome.kill();
+    // kill は非同期（SIGTERM）。Chrome がプロファイルへ書き込み終えるのを待ってから消す
+    await new Promise((r) => (chrome.exitCode !== null ? r() : chrome.once("exit", r)));
+    rmSync(PROFILE, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    process.exit(failed ? 1 : 0);
+  }
 })();
