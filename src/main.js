@@ -13,6 +13,7 @@ import * as audio from "./audio.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { registry, isDebugMode } from "./variants.js";
 import { mountDebugPanel } from "./debugpanel.js";
+import { registerFlipThemes, applyFlipVariants } from "./theme_flip.js";
 import { watchReducedMotion } from "./motion.js";
 import {
   listProfiles, addProfile, updateProfile, deleteProfile, addGame, listGames, MAX_PROFILES,
@@ -255,7 +256,7 @@ async function doMove(r, c) {
       onAppear: () => audio.playAppear(),              // 出現（フッ・極小）
       onLand: () => audio.playPlace(),                 // 着地（コツ・主役）
       onFlipLift: () => audio.playFlipLift(),          // 号砲の持ち上げ（スッ）
-      onFlipLand: (i) => audio.playFlipLand(i),        // 各めくりの着地（コツ・連鎖で上昇）
+      onFlipLand: (i) => audio.playFlipLandLayered(i, flippedCount), // 各めくりの着地（基音層＋上モノ層・#7）
       isBig,
       // ④ 角／大量返しは着地でフリーズし、光＋音を先に出してからめくる
       onImpact: () => {
@@ -591,8 +592,11 @@ registry.register({
     { id: "b", label: "案B" },
   ],
 });
+// めくり音（#7）：基音層（コツ音の質感）と上モノ層（連鎖演出）を独立テーマとして登録
+registerFlipThemes(registry);
 const variantSelection = registry.resolve(location.search);
 document.documentElement.dataset.variantDemo = variantSelection.demo;
+applyFlipVariants(variantSelection, audio); // めくり音の選択を audio へ適用（既定＝現行と同一）
 // 切替パネルは ?debug=1 のときだけ生成する（フラグ無しではDOMに存在しない）
 if (isDebugMode(location.search)) {
   mountDebugPanel(registry, variantSelection);

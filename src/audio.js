@@ -211,3 +211,69 @@ export function stopBgm() {
   }
   currentBgm = null;
 }
+
+// ===================== めくり音バリアント（issue #7・基音層/上モノ層） =====================
+// 既存コードに触れない追記型ブロック。テーマ定義・プラン計算は src/theme_flip.js（純ロジック）、
+// 選択の適用は main.js が applyFlipVariants(selection, audio) で setFlipBase/setFlipTop を呼ぶ。
+// 既定（バリアント未指定）の挙動は現行 playFlipLand と完全に同一（flip_land / gain 0.9 / 同じ上昇則）。
+import { flipBaseRate } from "./theme_flip.js";
+
+// バリアント用の追加音源（scripts/gen-audio.mjs 末尾の追記ブロックで生成）
+const FLIP_VARIANT_FILES = {
+  flip_land_stone: "./audio/flip_land_stone.wav",
+  flip_land_glass: "./audio/flip_land_glass.wav",
+  flip_top_spark: "./audio/flip_top_spark.wav",
+  flip_top_flame: "./audio/flip_top_flame.wav",
+  flip_top_harp: "./audio/flip_top_harp.wav",
+};
+// 先読み。init() 前に届けば既存の decode 一括処理に乗り、init() 後に届いた分はここで即 decode する
+// （既存の先読みと違いモジュール末尾＝開始が遅い分、到着が init を跨ぐレースを自前で潰す）。
+for (const [k, url] of Object.entries(FLIP_VARIANT_FILES)) {
+  fetch(`${url}?v=${AUDIO_VER}`).then((r) => r.arrayBuffer()).then((ab) => {
+    rawBuffers[k] = ab;
+    if (ctx && !buffers[k]) {
+      ctx.decodeAudioData(ab.slice(0)).then((buf) => { buffers[k] = buf; }).catch(() => {});
+    }
+  }).catch(() => {});
+}
+
+// CDP検証用の計測フック：?audiotap=1 のときだけ発音指示を window.__flipTap へ記録し、
+// 直接発音用の window.__flipPlay を公開する。通常プレイ（パラメータ無し）では一切何もしない。
+const AUDIO_TAP = typeof location !== "undefined" &&
+  new URLSearchParams(location.search).get("audiotap") === "1";
+function tapFlip(rec) {
+  if (!AUDIO_TAP) return;
+  (window.__flipTap = window.__flipTap || []).push(rec);
+}
+
+// 基音層の選択状態（既定＝現行の flip_land / gain 0.9）と、上モノ層プレイヤー（null＝なし＝現行）。
+let flipBaseName = "flip_land";
+let flipBaseGain = 0.9;
+let flipTopPlayer = null;
+
+// 基音層の質感を切り替える（theme_flip.js の applyFlipVariants から呼ばれる）。不正値は既定に倒す。
+export function setFlipBase(name, gain = 0.9) {
+  flipBaseName = typeof name === "string" && name ? name : "flip_land";
+  const g = Number(gain);
+  flipBaseGain = Number.isFinite(g) && g > 0 ? g : 0.9;
+}
+// 上モノ層プレイヤー（(i, total) => void）を差し替える。関数以外は「なし」。
+export function setFlipTop(player) {
+  flipTopPlayer = typeof player === "function" ? player : null;
+}
+// 上モノ層実装から使う汎用再生口（バッファ名＋rate/gain 指定）。
+export function playSfx(name, { rate = 1, gain = 1 } = {}) {
+  tapFlip({ layer: "top", name, rate, gain });
+  playBuffer(name, { rate, gain });
+}
+
+// めくり着地の二層再生（main.js の onFlipLand から呼ばれる）。
+//   基音層＝選択中の質感バッファ＋既存と同一のピッチ上昇則（1枚ごとの発音は全案で維持）。
+//   上モノ層＝選択中の演出プレイヤー（なし可）。i＝何枚目か、total＝この手の総返し枚数（変動則用）。
+export function playFlipLandLayered(i = 0, total = 0) {
+  const rate = flipBaseRate(i);
+  tapFlip({ layer: "base", name: flipBaseName, rate, gain: flipBaseGain, i, total });
+  playBuffer(flipBaseName, { rate, gain: flipBaseGain });
+  if (flipTopPlayer) { try { flipTopPlayer(i, total); } catch {} } // 音は非必須＝対局進行をブロックしない
+}
+if (AUDIO_TAP) window.__flipPlay = playFlipLandLayered;
